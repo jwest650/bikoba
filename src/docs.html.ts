@@ -364,6 +364,7 @@ export const DOCS_HTML = `<!doctype html>
       <a class="primary" href="#overview-page">Overview</a>
       <a class="primary" href="#auth-page">Auth</a>
       <a class="primary" href="#categories-page">Categories</a>
+      <a class="primary" href="#products-page">Products</a>
 
       <div class="nav-group">Auth · Guide</div>
       <a href="#setup">Setup</a>
@@ -386,6 +387,13 @@ export const DOCS_HTML = `<!doctype html>
       <a href="#categories-create">POST /categories</a>
       <a href="#categories-list">GET /categories</a>
       <a href="#categories-by-slug">GET /categories/:slug</a>
+
+      <div class="nav-group">Products · Endpoints</div>
+      <a href="#products-create">POST /products</a>
+      <a href="#products-list">GET /products</a>
+      <a href="#products-get">GET /products/:id</a>
+      <a href="#products-update">PATCH /products/:id</a>
+      <a href="#products-delete">DELETE /products/:id</a>
     </nav>
   </aside>
 
@@ -444,8 +452,8 @@ export const DOCS_HTML = `<!doctype html>
             <p>Hierarchical product categories with parent/child nesting, slugs, featured flags, and ordering. Admin-managed, readable by every authenticated role.</p>
           </div>
           <div class="module">
-            <div class="top"><h4>Listings</h4><span class="status planned">Planned</span></div>
-            <p>Seller-owned product listings: create, update, publish/unpublish, search and filter.</p>
+            <div class="top"><h4>Products</h4><span class="status shipped">Shipped</span></div>
+            <p>Seller-owned product listings: create, update, delete, list with filters. Sellers manage their own; admins manage any; everyone can read.</p>
           </div>
           <div class="module">
             <div class="top"><h4>Cart &amp; Checkout</h4><span class="status planned">Planned</span></div>
@@ -877,6 +885,168 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
   ]
 }</pre>
         <div class="callout">Returns <code>404</code> if no category with that slug exists.</div>
+      </article>
+
+      <div class="footer">
+        Bikoba marketplace — NestJS 11, Prisma 6, Passport-JWT.
+      </div>
+    </article>
+
+    <!-- ──────────── PRODUCTS PAGE ──────────── -->
+    <article class="page" id="products-page">
+      <header class="hero">
+        <div class="eyebrow">Products · API Reference</div>
+        <h1>Products</h1>
+        <p>Seller-owned product listings, attached to a category. Sellers create and manage their own; admins can manage any; buyers, sellers, and admins can read.</p>
+      </header>
+
+      <section>
+        <h2>How it works</h2>
+        <p>
+          Every product belongs to exactly one <code>Category</code> and is owned by exactly one <code>seller</code>
+          (the authenticated user who created it). On write endpoints, <code>sellerId</code> is taken from the bearer
+          token — clients can not spoof ownership.
+        </p>
+        <ul>
+          <li><code>price</code> is stored as <code>DECIMAL(12, 2)</code> and serialized as a JSON <strong>string</strong> like <code>"12.99"</code>. Send a number (e.g. <code>19.95</code>) on write, read it back as a string.</li>
+          <li><code>currency</code> is a 3-letter ISO code, default <code>"USD"</code>.</li>
+          <li><code>slug</code> and <code>sku</code> are unique. Conflicts return <code>409</code>.</li>
+          <li><code>images</code> is an array of URLs (max 20).</li>
+          <li>Deleting a category is restricted while it has products. Deleting a seller cascades and removes their products.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Access</h2>
+        <table>
+          <thead><tr><th>Role</th><th>Create</th><th>Read</th><th>Update</th><th>Delete</th></tr></thead>
+          <tbody>
+            <tr><td><span class="role buyer">BUYER</span></td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+            <tr><td><span class="role seller">SELLER</span></td><td>✓ owns it</td><td>✓</td><td>✓ if owner</td><td>✓ if owner</td></tr>
+            <tr><td><span class="role admin">ADMIN</span></td><td>✓ owns it</td><td>✓</td><td>✓ any</td><td>✓ any</td></tr>
+          </tbody>
+        </table>
+        <div class="callout">
+          Role gating is enforced by <code>RolesGuard</code>. Ownership (seller can only mutate their own products) is enforced in <code>ProductsService.requireOwnerOrAdmin</code> — admins bypass the owner check.
+        </div>
+      </section>
+
+      <h2>Endpoints</h2>
+
+      <article class="endpoint" id="products-create">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/products</span>
+          <span class="auth-pill required"><span class="role seller">SELLER</span> or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Create a new product. The authenticated user becomes the <code>seller</code>.</p>
+        <h3>Request headers</h3>
+<pre>Authorization: Bearer &lt;accessToken&gt;</pre>
+        <h3>Request body</h3>
+<pre>{
+  <span class="k">"name"</span>: <span class="s">"iPhone 17 Pro"</span>,
+  <span class="k">"slug"</span>: <span class="s">"iphone-17-pro"</span>,
+  <span class="k">"description"</span>: <span class="s">"Latest flagship"</span>,
+  <span class="k">"price"</span>: <span class="n">1199.00</span>,
+  <span class="k">"currency"</span>: <span class="s">"USD"</span>,             <span class="c">// optional, default "USD"</span>
+  <span class="k">"sku"</span>: <span class="s">"IP17P-256-BLK"</span>,        <span class="c">// optional, unique</span>
+  <span class="k">"stock"</span>: <span class="n">25</span>,                  <span class="c">// optional, default 0</span>
+  <span class="k">"images"</span>: [<span class="s">"https://cdn.example.com/iphone-1.jpg"</span>], <span class="c">// optional</span>
+  <span class="k">"isActive"</span>: <span class="k">true</span>,            <span class="c">// optional, default true</span>
+  <span class="k">"isFeatured"</span>: <span class="k">false</span>,         <span class="c">// optional, default false</span>
+  <span class="k">"categoryId"</span>: <span class="s">"&lt;uuid of phones category&gt;"</span>
+}</pre>
+        <h3>Response 201</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"name"</span>: <span class="s">"iPhone 17 Pro"</span>,
+  <span class="k">"slug"</span>: <span class="s">"iphone-17-pro"</span>,
+  <span class="k">"price"</span>: <span class="s">"1199.00"</span>,
+  <span class="k">"currency"</span>: <span class="s">"USD"</span>,
+  <span class="k">"stock"</span>: <span class="n">25</span>,
+  <span class="k">"images"</span>: [<span class="s">"…"</span>],
+  <span class="k">"isActive"</span>: <span class="k">true</span>,
+  <span class="k">"categoryId"</span>: <span class="s">"…"</span>,
+  <span class="k">"sellerId"</span>: <span class="s">"&lt;authenticated user id&gt;"</span>,
+  <span class="k">"createdAt"</span>: <span class="s">"…"</span>,
+  <span class="k">"updatedAt"</span>: <span class="s">"…"</span>
+}</pre>
+        <div class="callout">
+          <code>400</code> when <code>categoryId</code> doesn't exist.
+          <code>409</code> on slug/sku conflict.
+          <code>403</code> when the caller isn't a seller or admin.
+        </div>
+      </article>
+
+      <article class="endpoint" id="products-list">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/products</span>
+          <span class="auth-pill required"><span class="role buyer">BUYER</span> <span class="role seller">SELLER</span> <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">List products with optional filters and pagination. Ordered by <code>createdAt</code> desc.</p>
+        <h3>Query parameters</h3>
+        <table>
+          <thead><tr><th>Param</th><th>Type</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>categoryId</code></td><td>UUID</td><td>Filter by category.</td></tr>
+            <tr><td><code>sellerId</code></td><td>UUID</td><td>Filter by seller.</td></tr>
+            <tr><td><code>isActive</code></td><td>boolean</td><td>Filter by active state.</td></tr>
+            <tr><td><code>isFeatured</code></td><td>boolean</td><td>Filter by featured flag.</td></tr>
+            <tr><td><code>search</code></td><td>string</td><td>Case-insensitive substring match against name + description.</td></tr>
+            <tr><td><code>take</code></td><td>int</td><td>Page size 1–100 (default 20).</td></tr>
+            <tr><td><code>skip</code></td><td>int</td><td>Offset for pagination (default 0).</td></tr>
+          </tbody>
+        </table>
+        <h3>Example</h3>
+<pre>GET /products?categoryId=…&amp;isActive=true&amp;search=iphone&amp;take=10</pre>
+      </article>
+
+      <article class="endpoint" id="products-get">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/products/:id</span>
+          <span class="auth-pill required"><span class="role buyer">BUYER</span> <span class="role seller">SELLER</span> <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Fetch a single product by id, with its category (id/name/slug) and seller (id/fullName) inlined.</p>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"name"</span>: <span class="s">"iPhone 17 Pro"</span>,
+  <span class="k">"price"</span>: <span class="s">"1199.00"</span>,
+  <span class="k">"category"</span>: { <span class="k">"id"</span>: <span class="s">"…"</span>, <span class="k">"name"</span>: <span class="s">"Phones"</span>, <span class="k">"slug"</span>: <span class="s">"phones"</span> },
+  <span class="k">"seller"</span>:   { <span class="k">"id"</span>: <span class="s">"…"</span>, <span class="k">"fullName"</span>: <span class="s">"Jane Doe"</span> }
+}</pre>
+        <div class="callout"><code>404</code> if no product with that id exists.</div>
+      </article>
+
+      <article class="endpoint" id="products-update">
+        <header>
+          <span class="method post">PATCH</span>
+          <span class="path">/products/:id</span>
+          <span class="auth-pill required"><span class="role seller">SELLER</span> (owner) or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Partial update — send only the fields you want to change. Sellers can only update products they own; admins can update any.</p>
+        <h3>Request body</h3>
+<pre>{
+  <span class="k">"price"</span>: <span class="n">1099.00</span>,
+  <span class="k">"stock"</span>: <span class="n">12</span>,
+  <span class="k">"isActive"</span>: <span class="k">false</span>
+}</pre>
+        <div class="callout">
+          <code>403</code> if a seller tries to update a product they don't own.
+          <code>404</code> if the product doesn't exist.
+          <code>409</code> on slug/sku conflict.
+        </div>
+      </article>
+
+      <article class="endpoint" id="products-delete">
+        <header>
+          <span class="method delete">DELETE</span>
+          <span class="path">/products/:id</span>
+          <span class="auth-pill required"><span class="role seller">SELLER</span> (owner) or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Hard-delete a product. Returns <code>204</code>. Same ownership rules as update.</p>
       </article>
 
       <div class="footer">

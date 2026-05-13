@@ -27,6 +27,7 @@ model User {
 
   sessions           Session[]
   emailVerifications EmailVerificationToken[]
+  products           Product[]
 
   @@index([role])
 }
@@ -63,9 +64,38 @@ model Category {
 
   parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children Category[] @relation("CategoryHierarchy")
+  products Product[]
 
   @@index([parentId])
   @@index([slug])
+  @@index([isActive])
+  @@index([isFeatured])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  price       Decimal  @db.Decimal(12, 2)
+  currency    String   @default("USD")
+  sku         String?  @unique
+  stock       Int      @default(0)
+  images      String[] @default([])
+  isActive    Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  sellerId String
+  seller   User   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([sellerId])
   @@index([isActive])
   @@index([isFeatured])
 }

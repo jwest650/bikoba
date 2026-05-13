@@ -7,6 +7,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { validateEnv } from './config/env.validation';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ProductsModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { PrismaModule } from './prisma/prisma.module';
     MailModule,
     AuthModule,
     CategoriesModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
