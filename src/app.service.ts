@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { DOCS_HTML } from './docs.html';
 
 @Injectable()
 export class AppService {
-  getHello(): string {
-    return 'Hello World!';
+  getDocs(): string {
+    return DOCS_HTML;
   }
 }
