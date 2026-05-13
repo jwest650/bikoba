@@ -15,8 +15,10 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('serves the docs HTML', () => {
+      const html = appController.getDocs();
+      expect(html).toContain('<title>Bikoba Auth API</title>');
+      expect(html).toContain('/auth/register');
     });
   });
 });
