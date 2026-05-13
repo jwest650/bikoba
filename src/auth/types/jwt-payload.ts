@@ -15,6 +15,7 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   role: Role;
+  isEmailVerified: boolean;
 }
 
 export interface RefreshContext {

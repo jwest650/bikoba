@@ -12,6 +12,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { EmailVerificationService } from './email-verification.service';
 import type {
   AccessTokenPayload,
   AuthenticatedUser,
@@ -44,6 +45,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly emailVerification: EmailVerificationService,
     config: ConfigService,
   ) {
     this.accessTtl = config.get<string>('JWT_ACCESS_TTL', '15m');
@@ -75,6 +77,7 @@ export class AuthService {
       },
     });
 
+    await this.emailVerification.issueAndSend(user.id, user.email);
     return this.issueSession(user, device);
   }
 
@@ -164,7 +167,12 @@ export class AuthService {
 
     const accessToken = await this.signAccessToken(user);
     return {
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+      },
       tokens: {
         accessToken,
         refreshToken,
