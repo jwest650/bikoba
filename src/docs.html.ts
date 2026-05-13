@@ -363,6 +363,7 @@ export const DOCS_HTML = `<!doctype html>
     <nav>
       <a class="primary" href="#overview-page">Overview</a>
       <a class="primary" href="#auth-page">Auth</a>
+      <a class="primary" href="#categories-page">Categories</a>
 
       <div class="nav-group">Auth · Guide</div>
       <a href="#setup">Setup</a>
@@ -380,6 +381,11 @@ export const DOCS_HTML = `<!doctype html>
       <a href="#verify-email">GET /auth/verify-email</a>
       <a href="#resend-verification">POST /auth/resend-verification</a>
       <a href="#role-gated">Role-gated examples</a>
+
+      <div class="nav-group">Categories · Endpoints</div>
+      <a href="#categories-create">POST /categories</a>
+      <a href="#categories-list">GET /categories</a>
+      <a href="#categories-by-slug">GET /categories/:slug</a>
     </nav>
   </aside>
 
@@ -432,6 +438,10 @@ export const DOCS_HTML = `<!doctype html>
           <div class="module">
             <div class="top"><h4>Auth</h4><span class="status shipped">Shipped</span></div>
             <p>Register, login, JWT access + rotating refresh tokens, per-device sessions, email verification, role-based gating.</p>
+          </div>
+          <div class="module">
+            <div class="top"><h4>Categories</h4><span class="status shipped">Shipped</span></div>
+            <p>Hierarchical product categories with parent/child nesting, slugs, featured flags, and ordering. Admin-managed, readable by every authenticated role.</p>
           </div>
           <div class="module">
             <div class="top"><h4>Listings</h4><span class="status planned">Planned</span></div>
@@ -728,6 +738,146 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
   <span class="k">return</span> <span class="k">this</span>.listings.create(user.id, dto);
 }</pre>
       </section>
+
+      <div class="footer">
+        Bikoba marketplace — NestJS 11, Prisma 6, Passport-JWT.
+      </div>
+    </article>
+
+    <!-- ──────────── CATEGORIES PAGE ──────────── -->
+    <article class="page" id="categories-page">
+      <header class="hero">
+        <div class="eyebrow">Categories · API Reference</div>
+        <h1>Categories</h1>
+        <p>Hierarchical product categories with parent/child nesting. Admins create and curate them; buyers, sellers, and admins can read them.</p>
+      </header>
+
+      <section>
+        <h2>How it works</h2>
+        <p>
+          Categories form a tree. A category with no <code>parentId</code> is a top-level root at <code>level: 0</code>.
+          Setting <code>parentId</code> nests it under another category and the server auto-computes <code>level</code>
+          as <code>parent.level + 1</code>. Deleting a parent cascades to its children.
+        </p>
+        <ul>
+          <li><code>slug</code> is unique and used in URLs — lowercase letters, digits, and hyphens.</li>
+          <li><code>sortOrder</code> + <code>name</code> control list ordering (ascending).</li>
+          <li><code>isFeatured</code> and <code>isActive</code> are filterable via query params on the list endpoint.</li>
+          <li>Deleting a parent cascades to all descendants via <code>ON DELETE CASCADE</code>.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Access</h2>
+        <table>
+          <thead><tr><th>Role</th><th>Create</th><th>Read</th></tr></thead>
+          <tbody>
+            <tr><td><span class="role buyer">BUYER</span></td><td>—</td><td>✓</td></tr>
+            <tr><td><span class="role seller">SELLER</span></td><td>—</td><td>✓</td></tr>
+            <tr><td><span class="role admin">ADMIN</span></td><td>✓</td><td>✓</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <h2>Endpoints</h2>
+
+      <article class="endpoint" id="categories-create">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/categories</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Create a top-level or nested category. <code>level</code> is computed from the parent — clients do not supply it.</p>
+        <h3>Request headers</h3>
+<pre>Authorization: Bearer &lt;accessToken&gt;</pre>
+        <h3>Request body</h3>
+<pre>{
+  <span class="k">"name"</span>: <span class="s">"Phones"</span>,
+  <span class="k">"slug"</span>: <span class="s">"phones"</span>,
+  <span class="k">"description"</span>: <span class="s">"Smartphones and accessories"</span>,           <span class="c">// optional</span>
+  <span class="k">"imageUrl"</span>: <span class="s">"https://cdn.example.com/phones.jpg"</span>,    <span class="c">// optional</span>
+  <span class="k">"icon"</span>: <span class="s">"smartphone"</span>,                              <span class="c">// optional</span>
+  <span class="k">"parentId"</span>: <span class="s">"&lt;uuid of parent&gt;"</span>,                  <span class="c">// optional — omit for a root category</span>
+  <span class="k">"isFeatured"</span>: <span class="k">false</span>,                              <span class="c">// optional, default false</span>
+  <span class="k">"isActive"</span>: <span class="k">true</span>,                                <span class="c">// optional, default true</span>
+  <span class="k">"sortOrder"</span>: <span class="n">0</span>,                                  <span class="c">// optional, default 0</span>
+  <span class="k">"metaTitle"</span>: <span class="s">"Phones | Bikoba"</span>,                  <span class="c">// optional</span>
+  <span class="k">"metaDescription"</span>: <span class="s">"Shop phones on Bikoba"</span>      <span class="c">// optional</span>
+}</pre>
+        <h3>Response 201</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"name"</span>: <span class="s">"Phones"</span>,
+  <span class="k">"slug"</span>: <span class="s">"phones"</span>,
+  <span class="k">"parentId"</span>: <span class="s">"…"</span>,
+  <span class="k">"level"</span>: <span class="n">1</span>,
+  <span class="k">"isFeatured"</span>: <span class="k">false</span>,
+  <span class="k">"isActive"</span>: <span class="k">true</span>,
+  <span class="k">"sortOrder"</span>: <span class="n">0</span>,
+  <span class="k">"createdAt"</span>: <span class="s">"…"</span>,
+  <span class="k">"updatedAt"</span>: <span class="s">"…"</span>
+}</pre>
+        <div class="callout">
+          Returns <code>400</code> when <code>parentId</code> doesn't exist, <code>409</code> when <code>slug</code> is already taken,
+          and <code>403</code> when the caller isn't an admin.
+        </div>
+      </article>
+
+      <article class="endpoint" id="categories-list">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/categories</span>
+          <span class="auth-pill required"><span class="role buyer">BUYER</span> <span class="role seller">SELLER</span> <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">List categories ordered by <code>sortOrder</code> ascending, then <code>name</code>. Supports filtering by parent, active state, and featured flag.</p>
+        <h3>Query parameters</h3>
+        <table>
+          <thead><tr><th>Param</th><th>Type</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><code>parentId</code></td><td>UUID or <code>null</code></td><td>Only return children of this category. Pass the literal <code>null</code> to get top-level roots.</td></tr>
+            <tr><td><code>isActive</code></td><td>boolean</td><td>Filter by <code>isActive</code>.</td></tr>
+            <tr><td><code>isFeatured</code></td><td>boolean</td><td>Filter by <code>isFeatured</code>.</td></tr>
+          </tbody>
+        </table>
+        <h3>Example</h3>
+<pre>GET /categories?parentId=null&amp;isActive=true</pre>
+        <h3>Response 200</h3>
+<pre>[
+  {
+    <span class="k">"id"</span>: <span class="s">"…"</span>,
+    <span class="k">"name"</span>: <span class="s">"Electronics"</span>,
+    <span class="k">"slug"</span>: <span class="s">"electronics"</span>,
+    <span class="k">"parentId"</span>: <span class="k">null</span>,
+    <span class="k">"level"</span>: <span class="n">0</span>,
+    <span class="k">"isActive"</span>: <span class="k">true</span>,
+    <span class="k">"isFeatured"</span>: <span class="k">true</span>,
+    <span class="k">"sortOrder"</span>: <span class="n">0</span>
+  }
+]</pre>
+      </article>
+
+      <article class="endpoint" id="categories-by-slug">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/categories/:slug</span>
+          <span class="auth-pill required"><span class="role buyer">BUYER</span> <span class="role seller">SELLER</span> <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Fetch a single category by its slug, with its direct children inlined.</p>
+        <h3>Example</h3>
+<pre>GET /categories/electronics</pre>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"name"</span>: <span class="s">"Electronics"</span>,
+  <span class="k">"slug"</span>: <span class="s">"electronics"</span>,
+  <span class="k">"parentId"</span>: <span class="k">null</span>,
+  <span class="k">"level"</span>: <span class="n">0</span>,
+  <span class="k">"children"</span>: [
+    { <span class="k">"id"</span>: <span class="s">"…"</span>, <span class="k">"name"</span>: <span class="s">"Phones"</span>, <span class="k">"slug"</span>: <span class="s">"phones"</span>, <span class="k">"level"</span>: <span class="n">1</span> }
+  ]
+}</pre>
+        <div class="callout">Returns <code>404</code> if no category with that slug exists.</div>
+      </article>
 
       <div class="footer">
         Bikoba marketplace — NestJS 11, Prisma 6, Passport-JWT.

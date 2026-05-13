@@ -44,6 +44,32 @@ model EmailVerificationToken {
   @@index([userId])
 }
 
+model Category {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  description     String?
+  imageUrl        String?
+  icon            String?
+  parentId        String?
+  level           Int      @default(0)
+  isFeatured      Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  metaTitle       String?
+  metaDescription String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Category[] @relation("CategoryHierarchy")
+
+  @@index([parentId])
+  @@index([slug])
+  @@index([isActive])
+  @@index([isFeatured])
+}
+
 model Session {
   id                String   @id @default(uuid())
   userId            String
