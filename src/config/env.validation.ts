@@ -25,5 +25,25 @@ export function validateEnv(
       'JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different in production.',
     );
   }
+
+  const R2_KEYS = [
+    'R2_ACCOUNT_ID',
+    'R2_ACCESS_KEY_ID',
+    'R2_SECRET_ACCESS_KEY',
+    'R2_BUCKET',
+    'R2_PUBLIC_URL',
+  ] as const;
+  const r2Set = R2_KEYS.filter(
+    (k) => typeof raw[k] === 'string' && raw[k] !== '',
+  );
+  if (r2Set.length > 0 && r2Set.length < R2_KEYS.length) {
+    const missingR2 = R2_KEYS.filter((k) => !r2Set.includes(k));
+    throw new Error(
+      `Partial R2 configuration. Missing: ${missingR2.join(
+        ', ',
+      )}. Set all R2_* vars or leave them all blank to disable uploads.`,
+    );
+  }
+
   return raw;
 }

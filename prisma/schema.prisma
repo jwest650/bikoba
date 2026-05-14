@@ -27,9 +27,31 @@ model User {
 
   sessions           Session[]
   emailVerifications EmailVerificationToken[]
-  products           Product[]
+  stores             Store[]
 
   @@index([role])
+}
+
+model Store {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @unique
+  description String?
+  logoUrl     String?
+  bannerUrl   String?
+  isActive    Boolean @default(true)
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([slug])
+  @@index([isActive])
 }
 
 model EmailVerificationToken {
@@ -88,14 +110,14 @@ model Product {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
-  sellerId String
-  seller   User   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([categoryId])
-  @@index([sellerId])
+  @@index([storeId])
   @@index([isActive])
   @@index([isFeatured])
 }

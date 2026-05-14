@@ -75,4 +75,7 @@ export class CreateProductDto {
 
   @IsUUID()
   categoryId!: string;
+
+  @IsUUID()
+  storeId!: string;
 }

@@ -7,6 +7,8 @@ import { CategoriesModule } from './categories/categories.module';
 import { validateEnv } from './config/env.validation';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './storage/storage.module';
+import { StoresModule } from './stores/stores.module';
 import { ProductsModule } from './products/products.module';
 
 @Module({
@@ -18,8 +20,10 @@ import { ProductsModule } from './products/products.module';
     }),
     PrismaModule,
     MailModule,
+    StorageModule,
     AuthModule,
     CategoriesModule,
+    StoresModule,
     ProductsModule,
   ],
   controllers: [AppController],

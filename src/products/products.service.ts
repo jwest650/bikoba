@@ -8,13 +8,14 @@ import {
 import { Prisma, Role } from '@prisma/client';
 import type { Product } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StoresService } from '../stores/stores.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 export interface ListProductsQuery {
   categoryId?: string;
-  sellerId?: string;
+  storeId?: string;
   isActive?: boolean;
   isFeatured?: boolean;
   search?: string;
@@ -24,9 +25,14 @@ export interface ListProductsQuery {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stores: StoresService,
+  ) {}
 
   async create(dto: CreateProductDto, caller: AuthenticatedUser): Promise<Product> {
+    await this.stores.requireCallerOwnsStore(dto.storeId, caller);
+
     const category = await this.prisma.category.findUnique({
       where: { id: dto.categoryId },
       select: { id: true },
@@ -49,7 +55,7 @@ export class ProductsService {
           isActive: dto.isActive ?? true,
           isFeatured: dto.isFeatured ?? false,
           categoryId: dto.categoryId,
-          sellerId: caller.id,
+          storeId: dto.storeId,
         },
       });
     } catch (err) {
@@ -64,7 +70,7 @@ export class ProductsService {
   findAll(query: ListProductsQuery): Promise<Product[]> {
     const where: Prisma.ProductWhereInput = {};
     if (query.categoryId) where.categoryId = query.categoryId;
-    if (query.sellerId) where.sellerId = query.sellerId;
+    if (query.storeId) where.storeId = query.storeId;
     if (typeof query.isActive === 'boolean') where.isActive = query.isActive;
     if (typeof query.isFeatured === 'boolean') where.isFeatured = query.isFeatured;
     if (query.search) {
@@ -87,7 +93,14 @@ export class ProductsService {
       where: { id },
       include: {
         category: { select: { id: true, name: true, slug: true } },
-        seller: { select: { id: true, fullName: true } },
+        store: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            owner: { select: { id: true, fullName: true } },
+          },
+        },
       },
     });
     if (!product) {
@@ -148,11 +161,14 @@ export class ProductsService {
     id: string,
     caller: AuthenticatedUser,
   ): Promise<Product> {
-    const product = await this.prisma.product.findUnique({ where: { id } });
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: { store: { select: { ownerId: true } } },
+    });
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-    if (caller.role !== Role.ADMIN && product.sellerId !== caller.id) {
+    if (caller.role !== Role.ADMIN && product.store.ownerId !== caller.id) {
       throw new ForbiddenException('You do not own this product');
     }
     return product;

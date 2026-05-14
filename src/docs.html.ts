@@ -109,7 +109,15 @@ export const DOCS_HTML = `<!doctype html>
   body:not(:has(:target)) .sidebar a[href="#overview-page"],
   body:has(#overview-page:target) .sidebar a[href="#overview-page"],
   body:has(#auth-page:target) .sidebar a[href="#auth-page"],
-  body:has(#auth-page :target) .sidebar a[href="#auth-page"] {
+  body:has(#auth-page :target) .sidebar a[href="#auth-page"],
+  body:has(#stores-page:target) .sidebar a[href="#stores-page"],
+  body:has(#stores-page :target) .sidebar a[href="#stores-page"],
+  body:has(#categories-page:target) .sidebar a[href="#categories-page"],
+  body:has(#categories-page :target) .sidebar a[href="#categories-page"],
+  body:has(#products-page:target) .sidebar a[href="#products-page"],
+  body:has(#products-page :target) .sidebar a[href="#products-page"],
+  body:has(#media-page:target) .sidebar a[href="#media-page"],
+  body:has(#media-page :target) .sidebar a[href="#media-page"] {
     background: white;
     color: var(--fg);
     font-weight: 600;
@@ -363,8 +371,10 @@ export const DOCS_HTML = `<!doctype html>
     <nav>
       <a class="primary" href="#overview-page">Overview</a>
       <a class="primary" href="#auth-page">Auth</a>
+      <a class="primary" href="#stores-page">Stores</a>
       <a class="primary" href="#categories-page">Categories</a>
       <a class="primary" href="#products-page">Products</a>
+      <a class="primary" href="#media-page">Media</a>
 
       <div class="nav-group">Auth · Guide</div>
       <a href="#setup">Setup</a>
@@ -383,6 +393,15 @@ export const DOCS_HTML = `<!doctype html>
       <a href="#resend-verification">POST /auth/resend-verification</a>
       <a href="#role-gated">Role-gated examples</a>
 
+      <div class="nav-group">Stores · Endpoints</div>
+      <a href="#stores-create">POST /stores</a>
+      <a href="#stores-list">GET /stores</a>
+      <a href="#stores-me">GET /stores/me</a>
+      <a href="#stores-by-slug">GET /stores/:slug</a>
+      <a href="#stores-products">GET /stores/:slug/products</a>
+      <a href="#stores-update">PATCH /stores/:id</a>
+      <a href="#stores-delete">DELETE /stores/:id</a>
+
       <div class="nav-group">Categories · Endpoints</div>
       <a href="#categories-create">POST /categories</a>
       <a href="#categories-list">GET /categories</a>
@@ -394,6 +413,9 @@ export const DOCS_HTML = `<!doctype html>
       <a href="#products-get">GET /products/:id</a>
       <a href="#products-update">PATCH /products/:id</a>
       <a href="#products-delete">DELETE /products/:id</a>
+
+      <div class="nav-group">Media · Endpoints</div>
+      <a href="#media-upload">POST /media/images</a>
     </nav>
   </aside>
 
@@ -452,8 +474,16 @@ export const DOCS_HTML = `<!doctype html>
             <p>Hierarchical product categories with parent/child nesting, slugs, featured flags, and ordering. Admin-managed, readable by every authenticated role.</p>
           </div>
           <div class="module">
+            <div class="top"><h4>Stores</h4><span class="status shipped">Shipped</span></div>
+            <p>Seller storefronts: a user can own multiple stores, each with their own slug, logo, banner, and product catalog. Creating a store auto-promotes a BUYER to SELLER.</p>
+          </div>
+          <div class="module">
             <div class="top"><h4>Products</h4><span class="status shipped">Shipped</span></div>
-            <p>Seller-owned product listings: create, update, delete, list with filters. Sellers manage their own; admins manage any; everyone can read.</p>
+            <p>Products belong to a store. Create, update, delete, list with filters. Store owners manage their own; admins manage any; everyone can read.</p>
+          </div>
+          <div class="module">
+            <div class="top"><h4>Media</h4><span class="status shipped">Shipped</span></div>
+            <p>Image uploads via multipart form. Streams to Cloudflare R2, returns a public CDN URL ready to drop into store logos, banners, or product image arrays.</p>
           </div>
           <div class="module">
             <div class="top"><h4>Cart &amp; Checkout</h4><span class="status planned">Planned</span></div>
@@ -749,6 +779,203 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
 
       <div class="footer">
         Bikoba marketplace — NestJS 11, Prisma 6, Passport-JWT.
+      </div>
+    </article>
+
+    <!-- ──────────── STORES PAGE ──────────── -->
+    <article class="page" id="stores-page">
+      <header class="hero">
+        <div class="eyebrow">Stores · API Reference</div>
+        <h1>Stores</h1>
+        <p>Sellers run their own storefronts. A user can own multiple stores; each store has a public slug, a logo and banner, and a catalog of products. Creating a store auto-promotes a BUYER to SELLER.</p>
+      </header>
+
+      <section>
+        <h2>How stores work</h2>
+        <ul>
+          <li>A <code>Store</code> belongs to exactly one user (<code>ownerId</code>). One user can own many stores.</li>
+          <li>Products belong to a store — not directly to a user. The seller is derived as <code>store.owner</code>.</li>
+          <li>Slugs are globally unique and used for public URLs: <code>/stores/:slug</code>.</li>
+          <li>Deleting a store cascades to every product in it (<code>onDelete: Cascade</code>). If that's risky for your data, switch the relation to <code>Restrict</code> at the schema level.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Ownership &amp; auto-promotion</h2>
+        <p>
+          <code>POST /stores</code> is open to <strong>any verified user</strong>. If a BUYER creates their first store,
+          the same transaction promotes them to SELLER — so they get a storefront <em>and</em> permission to manage
+          products in one round-trip.
+        </p>
+        <div class="callout">
+          The promotion is committed atomically with the store row, but it doesn't retroactively update existing access
+          tokens. Clients should call <code>POST /auth/refresh</code> after creating their first store to pick up the
+          new role. The next access token will reflect <code>role: "SELLER"</code>.
+        </div>
+        <p>
+          Mutations (<code>PATCH</code>, <code>DELETE</code>) require either the store's owner or an ADMIN. Trying to
+          touch someone else's store returns <code>403</code>.
+        </p>
+      </section>
+
+      <h2>Endpoints</h2>
+
+      <article class="endpoint" id="stores-create">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/stores</span>
+          <span class="auth-pill required">Verified email</span>
+        </header>
+        <p class="desc">Create a new store owned by the caller. Promotes BUYER → SELLER on first store.</p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"name"</span>: <span class="s">"Sunset Bakery"</span>,
+  <span class="k">"slug"</span>: <span class="s">"sunset-bakery"</span>,
+  <span class="k">"description"</span>: <span class="s">"Fresh sourdough, daily."</span>,
+  <span class="k">"logoUrl"</span>: <span class="s">"https://cdn.example.com/sunset/logo.png"</span>,    <span class="c">// optional</span>
+  <span class="k">"bannerUrl"</span>: <span class="s">"https://cdn.example.com/sunset/banner.jpg"</span>, <span class="c">// optional</span>
+  <span class="k">"isActive"</span>: <span class="k">true</span>                                <span class="c">// optional, defaults true</span>
+}</pre>
+        <h3>Response 201</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"name"</span>: <span class="s">"Sunset Bakery"</span>,
+  <span class="k">"slug"</span>: <span class="s">"sunset-bakery"</span>,
+  <span class="k">"description"</span>: <span class="s">"Fresh sourdough, daily."</span>,
+  <span class="k">"logoUrl"</span>: <span class="s">"…"</span>,
+  <span class="k">"bannerUrl"</span>: <span class="s">"…"</span>,
+  <span class="k">"isActive"</span>: <span class="k">true</span>,
+  <span class="k">"ownerId"</span>: <span class="s">"…"</span>,
+  <span class="k">"createdAt"</span>: <span class="s">"2026-05-14T…Z"</span>,
+  <span class="k">"updatedAt"</span>: <span class="s">"2026-05-14T…Z"</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — validation failed (e.g. malformed slug, invalid URL)</li>
+          <li><code>403</code> — caller's email isn't verified</li>
+          <li><code>409</code> — slug already taken</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="stores-list">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/stores</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">Paginated list of stores. Filter by owner, active flag, or free-text search across name + description.</p>
+        <h3>Query parameters</h3>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Default</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>ownerId</code></td><td>UUID</td><td>—</td><td>Only stores owned by this user</td></tr>
+            <tr><td><code>isActive</code></td><td>boolean</td><td>—</td><td><code>true</code> / <code>false</code></td></tr>
+            <tr><td><code>search</code></td><td>string</td><td>—</td><td>Case-insensitive match on name or description</td></tr>
+            <tr><td><code>take</code></td><td>int</td><td>20</td><td>Clamped to 1–100</td></tr>
+            <tr><td><code>skip</code></td><td>int</td><td>0</td><td>For offset pagination</td></tr>
+          </tbody>
+        </table>
+        <h3>Response 200</h3>
+<pre>[
+  { <span class="k">"id"</span>: <span class="s">"…"</span>, <span class="k">"name"</span>: <span class="s">"Sunset Bakery"</span>, <span class="k">"slug"</span>: <span class="s">"sunset-bakery"</span>, <span class="k">"isActive"</span>: <span class="k">true</span>, <span class="k">"ownerId"</span>: <span class="s">"…"</span>, … },
+  { <span class="k">"id"</span>: <span class="s">"…"</span>, <span class="k">"name"</span>: <span class="s">"Ridge Coffee"</span>,    <span class="k">"slug"</span>: <span class="s">"ridge-coffee"</span>,    <span class="k">"isActive"</span>: <span class="k">true</span>, <span class="k">"ownerId"</span>: <span class="s">"…"</span>, … }
+]</pre>
+      </article>
+
+      <article class="endpoint" id="stores-me">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/stores/me</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">Every store owned by the current user, newest first. Returns an empty array if they haven't created one yet.</p>
+      </article>
+
+      <article class="endpoint" id="stores-by-slug">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/stores/:slug</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">Fetch a single store by its public slug. Includes the owner's id + display name and a count of products.</p>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"name"</span>: <span class="s">"Sunset Bakery"</span>,
+  <span class="k">"slug"</span>: <span class="s">"sunset-bakery"</span>,
+  <span class="k">"description"</span>: <span class="s">"…"</span>,
+  <span class="k">"logoUrl"</span>: <span class="s">"…"</span>,
+  <span class="k">"bannerUrl"</span>: <span class="s">"…"</span>,
+  <span class="k">"isActive"</span>: <span class="k">true</span>,
+  <span class="k">"owner"</span>: { <span class="k">"id"</span>: <span class="s">"…"</span>, <span class="k">"fullName"</span>: <span class="s">"Jane Doe"</span> },
+  <span class="k">"_count"</span>: { <span class="k">"products"</span>: <span class="n">42</span> }
+}</pre>
+        <h3>Errors</h3>
+        <ul><li><code>404</code> — no store with that slug</li></ul>
+      </article>
+
+      <article class="endpoint" id="stores-products">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/stores/:slug/products</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">Active products belonging to a store, newest first. Each item includes its category. Inactive products are filtered out.</p>
+        <h3>Response 200</h3>
+<pre>[
+  {
+    <span class="k">"id"</span>: <span class="s">"…"</span>,
+    <span class="k">"name"</span>: <span class="s">"Whole-grain loaf"</span>,
+    <span class="k">"slug"</span>: <span class="s">"whole-grain-loaf"</span>,
+    <span class="k">"price"</span>: <span class="s">"7.50"</span>,
+    <span class="k">"currency"</span>: <span class="s">"USD"</span>,
+    <span class="k">"stock"</span>: <span class="n">12</span>,
+    <span class="k">"category"</span>: { <span class="k">"id"</span>: <span class="s">"…"</span>, <span class="k">"name"</span>: <span class="s">"Bread"</span>, <span class="k">"slug"</span>: <span class="s">"bread"</span> },
+    …
+  }
+]</pre>
+      </article>
+
+      <article class="endpoint" id="stores-update">
+        <header>
+          <span class="method post">PATCH</span>
+          <span class="path">/stores/:id</span>
+          <span class="auth-pill required">Owner or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Partially update a store. All fields are optional; send only what changes.</p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"name"</span>: <span class="s">"Sunset Bakery &amp; Café"</span>,
+  <span class="k">"description"</span>: <span class="s">"Now serving brunch."</span>,
+  <span class="k">"isActive"</span>: <span class="k">false</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — validation failed</li>
+          <li><code>403</code> — caller doesn't own this store and isn't ADMIN</li>
+          <li><code>404</code> — store not found</li>
+          <li><code>409</code> — new slug collides with an existing store</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="stores-delete">
+        <header>
+          <span class="method delete">DELETE</span>
+          <span class="path">/stores/:id</span>
+          <span class="auth-pill required">Owner or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">
+          Permanently delete the store. <strong>Cascades</strong>: every product in this store is also deleted.
+          Returns 204.
+        </p>
+        <div class="callout">
+          There's no undo. If you want a softer deletion model (set <code>isActive: false</code> instead of removing the row),
+          use <code>PATCH /stores/:id</code>.
+        </div>
+      </article>
+
+      <div class="footer">
+        Bikoba marketplace — Stores module.
       </div>
     </article>
 
@@ -1051,6 +1278,89 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
 
       <div class="footer">
         Bikoba marketplace — NestJS 11, Prisma 6, Passport-JWT.
+      </div>
+    </article>
+
+    <!-- ──────────── MEDIA PAGE ──────────── -->
+    <article class="page" id="media-page">
+      <header class="hero">
+        <div class="eyebrow">Media · API Reference</div>
+        <h1>Image uploads</h1>
+        <p>Multipart upload endpoint that streams images to <strong>Cloudflare R2</strong> and returns a public URL. Plug the URL into <code>Store.logoUrl</code>, <code>Store.bannerUrl</code>, <code>Product.images</code>, or anywhere else you store image references.</p>
+      </header>
+
+      <section>
+        <h2>How it works</h2>
+        <ul>
+          <li>Client POSTs <code>multipart/form-data</code> with a field named <code>file</code>.</li>
+          <li>Server validates MIME (<code>image/jpeg</code>, <code>image/png</code>, <code>image/webp</code>, <code>image/gif</code>) and size (<code>MAX_UPLOAD_BYTES</code>, default <strong>8 MB</strong>).</li>
+          <li>Server generates a random key (<code>images/YYYY/MM/&lt;hex&gt;.&lt;ext&gt;</code>), streams the buffer to R2 with the original <code>Content-Type</code> and a one-year immutable cache header.</li>
+          <li>Response includes the public URL — assembled from <code>R2_PUBLIC_URL</code> (your custom Cloudflare domain) plus the key. URLs are immutable; uploading the same file again produces a new key.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Configuration</h2>
+        <p>R2 credentials are read from environment variables. Either set <em>all</em> R2_* vars or leave them all blank — partial config fails at startup. With nothing configured, the server still boots; the upload endpoint returns <code>503</code>.</p>
+<pre><span class="c"># .env</span>
+<span class="k">R2_ACCOUNT_ID</span>=<span class="s">abc123…</span>
+<span class="k">R2_ACCESS_KEY_ID</span>=<span class="s">…</span>
+<span class="k">R2_SECRET_ACCESS_KEY</span>=<span class="s">…</span>
+<span class="k">R2_BUCKET</span>=<span class="s">bikoba-media</span>
+<span class="k">R2_PUBLIC_URL</span>=<span class="s">https://cdn.bikoba.com</span>
+<span class="k">MAX_UPLOAD_BYTES</span>=<span class="n">8388608</span></pre>
+
+        <div class="callout">
+          To get your <code>R2_ACCOUNT_ID</code>, open Cloudflare dashboard → R2 → it appears at the top of the page. Create the bucket and generate an API token with read+write to that bucket. For <code>R2_PUBLIC_URL</code>, connect a custom domain to the bucket under R2 → Settings → Public access.
+        </div>
+      </section>
+
+      <h2>Endpoints</h2>
+
+      <article class="endpoint" id="media-upload">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/media/images</span>
+          <span class="auth-pill required">Verified email</span>
+        </header>
+        <p class="desc">Upload one image. Returns the public URL plus storage key.</p>
+
+        <h3>Request</h3>
+<pre><span class="c"># multipart/form-data — single field named "file"</span>
+curl -X POST http://localhost:3000/media/images \\
+  -H <span class="s">"Authorization: Bearer &lt;accessToken&gt;"</span> \\
+  -F <span class="s">"file=@./photo.jpg"</span></pre>
+
+        <h3>Response 201</h3>
+<pre>{
+  <span class="k">"key"</span>: <span class="s">"images/2026/05/9f3a…0c.jpg"</span>,
+  <span class="k">"url"</span>: <span class="s">"https://cdn.bikoba.com/images/2026/05/9f3a…0c.jpg"</span>,
+  <span class="k">"contentType"</span>: <span class="s">"image/jpeg"</span>,
+  <span class="k">"size"</span>: <span class="n">204815</span>
+}</pre>
+
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — file missing, wrong MIME type, or larger than <code>MAX_UPLOAD_BYTES</code></li>
+          <li><code>401</code> — no/invalid bearer token</li>
+          <li><code>403</code> — caller's email isn't verified</li>
+          <li><code>500</code> — R2 PUT failed (network/credentials)</li>
+          <li><code>503</code> — R2 is not configured on the server</li>
+        </ul>
+      </article>
+
+      <section>
+        <h2>Wiring it into a flow</h2>
+        <p>Typical create-listing flow from a client:</p>
+        <ol>
+          <li>Client uploads each image via <code>POST /media/images</code> in sequence (or in parallel) and collects the returned <code>url</code> values.</li>
+          <li>Client calls <code>POST /products</code> with <code>images: [url1, url2, …]</code>.</li>
+        </ol>
+        <p>For store logos and banners, same idea: upload first, then <code>PATCH /stores/:id</code> with <code>logoUrl</code> / <code>bannerUrl</code> set to the returned URL.</p>
+      </section>
+
+      <div class="footer">
+        Bikoba marketplace — Media module.
       </div>
     </article>
   </main>
