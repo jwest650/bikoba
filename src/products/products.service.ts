@@ -9,6 +9,7 @@ import { Prisma, Role } from '@prisma/client';
 import type { Product } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { ProductsIndexer } from '../search/products-indexer.service';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -27,11 +28,18 @@ const LIST_TTL = 60;
 const ITEM_TTL = 300;
 const NAMESPACE = 'prod';
 
+const PRODUCT_WITH_CATEGORY = {
+  include: { category: { select: { name: true } } },
+} satisfies Prisma.ProductDefaultArgs;
+
+type ProductWithCategory = Prisma.ProductGetPayload<typeof PRODUCT_WITH_CATEGORY>;
+
 @Injectable()
 export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: RedisService,
+    private readonly indexer: ProductsIndexer,
   ) {}
 
   async create(dto: CreateProductDto, caller: AuthenticatedUser): Promise<Product> {
@@ -59,9 +67,11 @@ export class ProductsService {
           categoryId: dto.categoryId,
           sellerId: caller.id,
         },
+        ...PRODUCT_WITH_CATEGORY,
       });
       await this.cache.delByPattern(`${NAMESPACE}:list:*`);
-      return created;
+      await this.indexer.upsert(created);
+      return stripCategory(created);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const target = (err.meta?.target as string[] | undefined)?.join(', ') ?? 'field';
@@ -84,26 +94,7 @@ export class ProductsService {
       k: skip,
     })}`;
 
-    return this.cache.wrap(key, LIST_TTL, () => {
-      const where: Prisma.ProductWhereInput = {};
-      if (query.categoryId) where.categoryId = query.categoryId;
-      if (query.sellerId) where.sellerId = query.sellerId;
-      if (typeof query.isActive === 'boolean') where.isActive = query.isActive;
-      if (typeof query.isFeatured === 'boolean') where.isFeatured = query.isFeatured;
-      if (query.search) {
-        where.OR = [
-          { name: { contains: query.search, mode: 'insensitive' } },
-          { description: { contains: query.search, mode: 'insensitive' } },
-        ];
-      }
-
-      return this.prisma.product.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take,
-        skip,
-      });
-    });
+    return this.cache.wrap(key, LIST_TTL, () => this.runList(query, take, skip));
   }
 
   async findOne(id: string): Promise<Product> {
@@ -155,9 +146,11 @@ export class ProductsService {
           isFeatured: dto.isFeatured,
           categoryId: dto.categoryId,
         },
+        ...PRODUCT_WITH_CATEGORY,
       });
       await this.invalidate(id);
-      return updated;
+      await this.indexer.upsert(updated);
+      return stripCategory(updated);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const target = (err.meta?.target as string[] | undefined)?.join(', ') ?? 'field';
@@ -171,6 +164,52 @@ export class ProductsService {
     await this.requireOwnerOrAdmin(id, caller);
     await this.prisma.product.delete({ where: { id } });
     await this.invalidate(id);
+    await this.indexer.remove(id);
+  }
+
+  private async runList(
+    query: ListProductsQuery,
+    take: number,
+    skip: number,
+  ): Promise<Product[]> {
+    if (query.search && this.indexer.isEnabled()) {
+      const result = await this.indexer.search({
+        query: query.search,
+        categoryId: query.categoryId,
+        sellerId: query.sellerId,
+        isActive: query.isActive,
+        isFeatured: query.isFeatured,
+        take,
+        skip,
+      });
+      if (result.ids.length === 0) return [];
+      const products = await this.prisma.product.findMany({
+        where: { id: { in: result.ids } },
+      });
+      const byId = new Map(products.map((p) => [p.id, p]));
+      return result.ids
+        .map((id) => byId.get(id))
+        .filter((p): p is Product => p !== undefined);
+    }
+
+    const where: Prisma.ProductWhereInput = {};
+    if (query.categoryId) where.categoryId = query.categoryId;
+    if (query.sellerId) where.sellerId = query.sellerId;
+    if (typeof query.isActive === 'boolean') where.isActive = query.isActive;
+    if (typeof query.isFeatured === 'boolean') where.isFeatured = query.isFeatured;
+    if (query.search) {
+      where.OR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { description: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    return this.prisma.product.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    });
   }
 
   private async invalidate(id: string): Promise<void> {
@@ -193,6 +232,11 @@ export class ProductsService {
     }
     return product;
   }
+}
+
+function stripCategory(product: ProductWithCategory): Product {
+  const { category: _category, ...rest } = product;
+  return rest;
 }
 
 function clamp(value: number | undefined, min: number, max: number, fallback: number): number {

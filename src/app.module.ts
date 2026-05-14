@@ -9,6 +9,7 @@ import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { RedisModule } from './redis/redis.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { RedisModule } from './redis/redis.module';
     }),
     PrismaModule,
     RedisModule,
+    SearchModule,
     MailModule,
     AuthModule,
     CategoriesModule,

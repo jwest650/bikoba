@@ -4037,6 +4037,11 @@ media-typer@0.3.0:
   resolved "https://registry.npmjs.org/media-typer/-/media-typer-0.3.0.tgz"
   integrity sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ==
 
+meilisearch@^0.50.0:
+  version "0.50.0"
+  resolved "https://registry.npmjs.org/meilisearch/-/meilisearch-0.50.0.tgz"
+  integrity sha512-9IzIkobvnuS18Eg4dq/eJB9W+eXqeLZjNRgq/kKMswSmVYYSQsXqGgSuCA0JkF+o5RwJlwIsieQee6rh313VhA==
+
 memfs@^3.4.1:
   version "3.6.0"
   resolved "https://registry.npmjs.org/memfs/-/memfs-3.6.0.tgz"
