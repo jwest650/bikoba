@@ -8,6 +8,7 @@ import { validateEnv } from './config/env.validation';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ProductsModule } from './products/products.module';
       validate: validateEnv,
     }),
     PrismaModule,
+    RedisModule,
     MailModule,
     AuthModule,
     CategoriesModule,

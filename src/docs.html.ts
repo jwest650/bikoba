@@ -456,6 +456,10 @@ export const DOCS_HTML = `<!doctype html>
             <p>Seller-owned product listings: create, update, delete, list with filters. Sellers manage their own; admins manage any; everyone can read.</p>
           </div>
           <div class="module">
+            <div class="top"><h4>Redis cache</h4><span class="status shipped">Shipped</span></div>
+            <p>Transparent read-cache for categories and products. Cache-aside via <code>RedisService.wrap</code>; mutations invalidate by namespace. Falls back to the DB if Redis is unreachable.</p>
+          </div>
+          <div class="module">
             <div class="top"><h4>Cart &amp; Checkout</h4><span class="status planned">Planned</span></div>
             <p>Buyer carts, address management, order creation and checkout flow.</p>
           </div>
@@ -527,7 +531,9 @@ export const DOCS_HTML = `<!doctype html>
 <span class="k">SMTP_PORT</span>=<span class="n">587</span>
 <span class="k">SMTP_USER</span>=
 <span class="k">SMTP_PASS</span>=
-<span class="k">SMTP_FROM</span>=<span class="s">"Bikoba &lt;no-reply@bikoba.local&gt;"</span></pre>
+<span class="k">SMTP_FROM</span>=<span class="s">"Bikoba &lt;no-reply@bikoba.local&gt;"</span>
+<span class="c"># Redis — used for read-caching categories &amp; products. Optional; if unreachable the app falls back to the DB.</span>
+<span class="k">REDIS_URL</span>=<span class="s">redis://localhost:6379</span></pre>
 
         <h3>2. Migrate the database</h3>
 <pre>yarn prisma migrate dev --name init</pre>
@@ -787,6 +793,16 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
         </table>
       </section>
 
+      <section>
+        <h2>Caching</h2>
+        <p>Read endpoints are cached in Redis with the namespace <code>cat:</code>.</p>
+        <ul>
+          <li><code>GET /categories</code> → key <code>cat:list:p=…:a=…:f=…</code> · TTL <strong>10 min</strong></li>
+          <li><code>GET /categories/:slug</code> → key <code>cat:slug:&lt;slug&gt;</code> · TTL <strong>30 min</strong></li>
+          <li><code>POST /categories</code> → invalidates the entire <code>cat:*</code> namespace.</li>
+        </ul>
+      </section>
+
       <h2>Endpoints</h2>
 
       <article class="endpoint" id="categories-create">
@@ -928,6 +944,20 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
         </table>
         <div class="callout">
           Role gating is enforced by <code>RolesGuard</code>. Ownership (seller can only mutate their own products) is enforced in <code>ProductsService.requireOwnerOrAdmin</code> — admins bypass the owner check.
+        </div>
+      </section>
+
+      <section>
+        <h2>Caching</h2>
+        <p>Read endpoints are cached in Redis with the namespace <code>prod:</code>. TTLs are short because product data (especially <code>stock</code>) changes more often than categories.</p>
+        <ul>
+          <li><code>GET /products</code> → key <code>prod:list:&lt;hash of query&gt;</code> · TTL <strong>60 sec</strong></li>
+          <li><code>GET /products/:id</code> → key <code>prod:id:&lt;id&gt;</code> · TTL <strong>5 min</strong></li>
+          <li><code>POST /products</code> → invalidates <code>prod:list:*</code></li>
+          <li><code>PATCH /products/:id</code> · <code>DELETE /products/:id</code> → invalidates <code>prod:list:*</code> and <code>prod:id:&lt;id&gt;</code></li>
+        </ul>
+        <div class="callout">
+          Up to 60 s of stale <code>stock</code> on cached list responses. If you ever add reservation-at-checkout, that path should bypass the cache and read straight from the DB.
         </div>
       </section>
 
