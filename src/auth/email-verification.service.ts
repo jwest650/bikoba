@@ -1,21 +1,36 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import { createHash, randomBytes } from 'crypto';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  QUEUE_EMAIL,
+  type EmailJobName,
+  type EmailVerificationJob,
+} from '../queue/queue.constants';
 
 @Injectable()
 export class EmailVerificationService {
   private readonly ttlMs: number;
   private readonly appUrl: string;
 
+  private readonly logger = new Logger(EmailVerificationService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    @InjectQueue(QUEUE_EMAIL) private readonly emailQueue: Queue<
+      EmailVerificationJob,
+      void,
+      EmailJobName
+    >,
     config: ConfigService,
   ) {
     const ttlHours = Number(
@@ -44,7 +59,25 @@ export class EmailVerificationService {
     });
 
     const link = `${this.appUrl}/auth/verify-email?token=${rawToken}`;
-    await this.mail.sendEmailVerification(email, link);
+    await this.dispatchVerificationEmail(email, link);
+  }
+
+  private async dispatchVerificationEmail(
+    to: string,
+    link: string,
+  ): Promise<void> {
+    try {
+      await this.emailQueue.add(
+        'verification',
+        { to, link },
+        { jobId: `verification:${to}:${Date.now()}` },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Email queue unavailable (${(err as Error).message}); sending verification synchronously.`,
+      );
+      await this.mail.sendEmailVerification(to, link);
+    }
   }
 
   async verify(rawToken: string): Promise<{ userId: string; email: string }> {

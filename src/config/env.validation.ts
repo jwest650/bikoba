@@ -45,5 +45,18 @@ export function validateEnv(
     );
   }
 
+  const atUsername = typeof raw.AT_USERNAME === 'string' ? raw.AT_USERNAME : '';
+  const atApiKey = typeof raw.AT_API_KEY === 'string' ? raw.AT_API_KEY : '';
+  if (atUsername && !atApiKey) {
+    throw new Error(
+      'AT_USERNAME is set but AT_API_KEY is blank. Set both or leave both blank to disable SMS.',
+    );
+  }
+  if (!atUsername && atApiKey) {
+    throw new Error(
+      'AT_API_KEY is set but AT_USERNAME is blank. Set both or leave both blank to disable SMS.',
+    );
+  }
+
   return raw;
 }

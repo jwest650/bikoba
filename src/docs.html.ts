@@ -117,7 +117,13 @@ export const DOCS_HTML = `<!doctype html>
   body:has(#products-page:target) .sidebar a[href="#products-page"],
   body:has(#products-page :target) .sidebar a[href="#products-page"],
   body:has(#media-page:target) .sidebar a[href="#media-page"],
-  body:has(#media-page :target) .sidebar a[href="#media-page"] {
+  body:has(#media-page :target) .sidebar a[href="#media-page"],
+  body:has(#seller-applications-page:target) .sidebar a[href="#seller-applications-page"],
+  body:has(#seller-applications-page :target) .sidebar a[href="#seller-applications-page"],
+  body:has(#sms-page:target) .sidebar a[href="#sms-page"],
+  body:has(#sms-page :target) .sidebar a[href="#sms-page"],
+  body:has(#orders-page:target) .sidebar a[href="#orders-page"],
+  body:has(#orders-page :target) .sidebar a[href="#orders-page"] {
     background: white;
     color: var(--fg);
     font-weight: 600;
@@ -371,9 +377,12 @@ export const DOCS_HTML = `<!doctype html>
     <nav>
       <a class="primary" href="#overview-page">Overview</a>
       <a class="primary" href="#auth-page">Auth</a>
+      <a class="primary" href="#sms-page">SMS &amp; OTP</a>
+      <a class="primary" href="#seller-applications-page">Seller applications</a>
       <a class="primary" href="#stores-page">Stores</a>
       <a class="primary" href="#categories-page">Categories</a>
       <a class="primary" href="#products-page">Products</a>
+      <a class="primary" href="#orders-page">Orders</a>
       <a class="primary" href="#media-page">Media</a>
 
       <div class="nav-group">Auth · Guide</div>
@@ -391,7 +400,22 @@ export const DOCS_HTML = `<!doctype html>
       <a href="#me">POST /auth/me</a>
       <a href="#verify-email">GET /auth/verify-email</a>
       <a href="#resend-verification">POST /auth/resend-verification</a>
+      <a href="#change-password">POST /auth/password</a>
       <a href="#role-gated">Role-gated examples</a>
+
+      <div class="nav-group">SMS &amp; OTP · Endpoints</div>
+      <a href="#sms-set-phone">POST /users/me/phone</a>
+      <a href="#otp-send">POST /auth/otp/send</a>
+      <a href="#otp-verify">POST /auth/otp/verify</a>
+
+      <div class="nav-group">Seller applications · Endpoints</div>
+      <a href="#sa-submit">POST /seller-applications</a>
+      <a href="#sa-me">GET /seller-applications/me</a>
+      <a href="#sa-cancel">POST /seller-applications/me/cancel</a>
+      <a href="#sa-admin-list">GET /admin/seller-applications</a>
+      <a href="#sa-admin-get">GET /admin/seller-applications/:id</a>
+      <a href="#sa-admin-approve">POST /admin/seller-applications/:id/approve</a>
+      <a href="#sa-admin-reject">POST /admin/seller-applications/:id/reject</a>
 
       <div class="nav-group">Stores · Endpoints</div>
       <a href="#stores-create">POST /stores</a>
@@ -413,6 +437,16 @@ export const DOCS_HTML = `<!doctype html>
       <a href="#products-get">GET /products/:id</a>
       <a href="#products-update">PATCH /products/:id</a>
       <a href="#products-delete">DELETE /products/:id</a>
+
+      <div class="nav-group">Orders · Endpoints</div>
+      <a href="#orders-create">POST /orders</a>
+      <a href="#orders-mine">GET /orders/me</a>
+      <a href="#orders-for-store">GET /orders/store/:storeId</a>
+      <a href="#orders-get">GET /orders/:id</a>
+      <a href="#orders-ship">POST /orders/:id/ship</a>
+      <a href="#orders-ofd">POST /orders/:id/out-for-delivery</a>
+      <a href="#orders-deliver">POST /orders/:id/deliver</a>
+      <a href="#orders-cancel">POST /orders/:id/cancel</a>
 
       <div class="nav-group">Media · Endpoints</div>
       <a href="#media-upload">POST /media/images</a>
@@ -474,8 +508,16 @@ export const DOCS_HTML = `<!doctype html>
             <p>Hierarchical product categories with parent/child nesting, slugs, featured flags, and ordering. Admin-managed, readable by every authenticated role.</p>
           </div>
           <div class="module">
+            <div class="top"><h4>SMS &amp; OTP</h4><span class="status shipped">Shipped</span></div>
+            <p>Africa's Talking integration. Phone verification, KYC + password-change transactional SMS. Falls back to console logging when AT creds aren't set.</p>
+          </div>
+          <div class="module">
+            <div class="top"><h4>Seller applications</h4><span class="status shipped">Shipped</span></div>
+            <p>BUYER submits Ghana Card + selfie. ADMIN approves or rejects with a reason. On approval the user's role flips to SELLER, unlocking store creation.</p>
+          </div>
+          <div class="module">
             <div class="top"><h4>Stores</h4><span class="status shipped">Shipped</span></div>
-            <p>Seller storefronts: a user can own multiple stores, each with their own slug, logo, banner, and product catalog. Creating a store auto-promotes a BUYER to SELLER.</p>
+            <p>Seller storefronts: a user can own multiple stores, each with their own slug, logo, banner, and product catalog. Creating a store requires SELLER or ADMIN role.</p>
           </div>
           <div class="module">
             <div class="top"><h4>Products</h4><span class="status shipped">Shipped</span></div>
@@ -486,12 +528,16 @@ export const DOCS_HTML = `<!doctype html>
             <p>Image uploads via multipart form. Streams to Cloudflare R2, returns a public CDN URL ready to drop into store logos, banners, or product image arrays.</p>
           </div>
           <div class="module">
+            <div class="top"><h4>Redis cache</h4><span class="status shipped">Shipped</span></div>
+            <p>Transparent read-cache for categories and products. Cache-aside via <code>RedisService.wrap</code>; mutations invalidate by namespace. Falls back to the DB if Redis is unreachable.</p>
+          </div>
+          <div class="module">
             <div class="top"><h4>Cart &amp; Checkout</h4><span class="status planned">Planned</span></div>
             <p>Buyer carts, address management, order creation and checkout flow.</p>
           </div>
           <div class="module">
-            <div class="top"><h4>Orders &amp; Fulfilment</h4><span class="status planned">Planned</span></div>
-            <p>Order lifecycle, seller fulfilment, status updates, returns.</p>
+            <div class="top"><h4>Orders &amp; Fulfilment</h4><span class="status shipped">Shipped</span></div>
+            <p>One order = one store. Status flow CONFIRMED → SHIPPED → OUT_FOR_DELIVERY → DELIVERED, plus CANCELLED. Item snapshots keep history stable. SMS triggers on placed / shipped / out-for-delivery.</p>
           </div>
           <div class="module">
             <div class="top"><h4>Payments</h4><span class="status planned">Planned</span></div>
@@ -557,7 +603,9 @@ export const DOCS_HTML = `<!doctype html>
 <span class="k">SMTP_PORT</span>=<span class="n">587</span>
 <span class="k">SMTP_USER</span>=
 <span class="k">SMTP_PASS</span>=
-<span class="k">SMTP_FROM</span>=<span class="s">"Bikoba &lt;no-reply@bikoba.local&gt;"</span></pre>
+<span class="k">SMTP_FROM</span>=<span class="s">"Bikoba &lt;no-reply@bikoba.local&gt;"</span>
+<span class="c"># Redis — used for read-caching categories &amp; products. Optional; if unreachable the app falls back to the DB.</span>
+<span class="k">REDIS_URL</span>=<span class="s">redis://localhost:6379</span></pre>
 
         <h3>2. Migrate the database</h3>
 <pre>yarn prisma migrate dev --name init</pre>
@@ -645,7 +693,7 @@ export const DOCS_HTML = `<!doctype html>
           <span class="path">/auth/login</span>
           <span class="auth-pill">Public</span>
         </header>
-        <p class="desc">Exchange email + password for a new token pair. Opens a new session row.</p>
+        <p class="desc">Exchange email + password for a new token pair. Opens a new session row. The server computes a coarse <code>browser|os|deviceType</code> fingerprint via <code>ua-parser-js</code> (version-agnostic — browser updates don't trip it). If that fingerprint hasn't been seen on a previous session for this user and they have a verified phone, a <code>new-device-login</code> SMS is queued as a security canary.</p>
         <h3>Request</h3>
 <pre>{
   <span class="k">"email"</span>: <span class="s">"jane@example.com"</span>,
@@ -736,6 +784,34 @@ export const DOCS_HTML = `<!doctype html>
         </p>
       </article>
 
+      <article class="endpoint" id="change-password">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/auth/password</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">
+          Change the caller's password. Verifies the current password, rehashes the new one, <strong>revokes every active session</strong>, and issues a fresh token pair for the calling device. If the user has a verified phone, queues a <code>password-changed</code> SMS as a security canary.
+        </p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"currentPassword"</span>: <span class="s">"correct horse battery"</span>,
+  <span class="k">"newPassword"</span>: <span class="s">"a much longer phrase"</span>
+}</pre>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"accessToken"</span>: <span class="s">"…"</span>,
+  <span class="k">"refreshToken"</span>: <span class="s">"…"</span>,
+  <span class="k">"expiresIn"</span>: <span class="n">900</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — validation failed (length, complexity)</li>
+          <li><code>401</code> — current password incorrect</li>
+          <li><code>409</code> — new password matches current</li>
+        </ul>
+      </article>
+
       <section id="role-gated">
         <h2>Role-gated examples</h2>
         <p>How <code>@Roles(...)</code> + <code>RolesGuard</code> compose with the global JWT guard. The global <code>JwtAuthGuard</code> protects every route unless you mark it <code>@Public()</code>.</p>
@@ -779,6 +855,311 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
 
       <div class="footer">
         Bikoba marketplace — NestJS 11, Prisma 6, Passport-JWT.
+      </div>
+    </article>
+
+    <!-- ──────────── SELLER APPLICATIONS PAGE ──────────── -->
+    <article class="page" id="seller-applications-page">
+      <header class="hero">
+        <div class="eyebrow">Seller applications · API Reference</div>
+        <h1>Seller applications</h1>
+        <p>Gate to becoming a seller. A BUYER submits Ghana Card details + a selfie; an ADMIN approves or rejects. On approval the user's role flips to SELLER, unlocking store creation and product listing.</p>
+      </header>
+
+      <section>
+        <h2>Flow</h2>
+        <ol>
+          <li>BUYER uploads <strong>Ghana Card front</strong>, <strong>Ghana Card back</strong>, and a <strong>selfie</strong> via <code>POST /media/images</code> — three calls, three URLs.</li>
+          <li>BUYER posts the URLs plus <code>fullName</code>, <code>phone</code>, and <code>ghanaCardNumber</code> to <code>POST /seller-applications</code>.</li>
+          <li>Application status starts as <code>PENDING</code>. The applicant can <strong>cancel</strong> at any time before review, then re-submit.</li>
+          <li>An ADMIN reviews via <code>GET /admin/seller-applications?status=PENDING</code>, opens the detail, and calls <code>approve</code> or <code>reject</code>.</li>
+          <li>On <strong>approve</strong>: status → <code>APPROVED</code>, user role → <code>SELLER</code>, <code>approvedAt = now</code>, <code>expiresAt = now + KYC_VERIFICATION_TTL_MONTHS</code>. An approval email is queued. User can now <code>POST /stores</code>.</li>
+          <li>On <strong>reject</strong>: status → <code>REJECTED</code> with a <code>rejectionReason</code>. A rejection email is queued. User may re-submit.</li>
+          <li>Approaching <code>expiresAt</code>: a separate daily sweep at <strong>03:30 UTC</strong> walks the configured <code>KYC_REMINDER_OFFSET_DAYS</code> (default <code>30, 7, 1</code>) and queues a reminder email when the seller crosses each milestone. <code>lastReminderAt</code> dedupes so each milestone fires once.</li>
+          <li>At <code>expiresAt</code>: the expiry sweep at <strong>03:00 UTC</strong> flips the row to <code>EXPIRED</code>, demotes the user back to <code>BUYER</code>, deactivates their stores, and emails them. Re-submission restarts the cycle.</li>
+        </ol>
+        <div class="callout">
+          The user's existing access token still reports their old role until they call <code>POST /auth/refresh</code>. <code>JwtStrategy</code> re-reads the role on every request, so the next request after refresh sees the new one.
+        </div>
+      </section>
+
+      <section>
+        <h2>States</h2>
+        <table>
+          <thead><tr><th>Status</th><th>Meaning</th><th>Resubmit allowed?</th></tr></thead>
+          <tbody>
+            <tr><td><code>PENDING</code></td><td>Awaiting admin review</td><td>No — cancel first</td></tr>
+            <tr><td><code>APPROVED</code></td><td>Active SELLER. Valid until <code>expiresAt</code></td><td>No — already approved</td></tr>
+            <tr><td><code>REJECTED</code></td><td>Admin rejected with a <code>rejectionReason</code></td><td>Yes</td></tr>
+            <tr><td><code>CANCELLED</code></td><td>Applicant withdrew before review</td><td>Yes</td></tr>
+            <tr><td><code>EXPIRED</code></td><td>Approval lapsed; user demoted, stores deactivated</td><td>Yes</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Email notifications</h2>
+        <p>Every state transition that affects the seller enqueues an email through the <code>email</code> BullMQ queue. In dev without SMTP configured, the body is printed to the server console (see the Mail module).</p>
+        <table>
+          <thead><tr><th>Trigger</th><th>Email subject</th></tr></thead>
+          <tbody>
+            <tr><td>Admin approves application</td><td>Your Bikoba seller application is approved</td></tr>
+            <tr><td>Admin rejects application</td><td>Your Bikoba seller application needs changes</td></tr>
+            <tr><td>Approaching expiry (per offset)</td><td>Your Bikoba verification expires in N days</td></tr>
+            <tr><td>Verification expired</td><td>Your Bikoba verification has expired</td></tr>
+          </tbody>
+        </table>
+        <p>Reminder offsets come from <code>KYC_REMINDER_OFFSET_DAYS</code> (default <code>30,7,1</code>). Each milestone sends once per approval cycle, deduplicated via <code>lastReminderAt</code>. Resetting via re-submit or re-approval clears the dedupe state.</p>
+      </section>
+
+      <h2>Endpoints — applicant</h2>
+
+      <article class="endpoint" id="sa-submit">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/seller-applications</span>
+          <span class="auth-pill required">Verified BUYER</span>
+        </header>
+        <p class="desc">Submit (or re-submit after rejection) the application. Returns the application row.</p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"fullName"</span>: <span class="s">"Jane Doe"</span>,
+  <span class="k">"phone"</span>: <span class="s">"+233241234567"</span>,
+  <span class="k">"ghanaCardNumber"</span>: <span class="s">"GHA-123456789-0"</span>,
+  <span class="k">"ghanaCardFront"</span>: <span class="s">"https://cdn.bikoba.com/images/2026/05/abc.jpg"</span>,
+  <span class="k">"ghanaCardBack"</span>:  <span class="s">"https://cdn.bikoba.com/images/2026/05/def.jpg"</span>,
+  <span class="k">"selfieUrl"</span>:      <span class="s">"https://cdn.bikoba.com/images/2026/05/ghi.jpg"</span>
+}</pre>
+        <h3>Response 201</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"userId"</span>: <span class="s">"…"</span>,
+  <span class="k">"fullName"</span>: <span class="s">"Jane Doe"</span>,
+  <span class="k">"phone"</span>: <span class="s">"+233241234567"</span>,
+  <span class="k">"ghanaCardNumber"</span>: <span class="s">"GHA-123456789-0"</span>,
+  <span class="k">"ghanaCardFront"</span>: <span class="s">"…"</span>,
+  <span class="k">"ghanaCardBack"</span>:  <span class="s">"…"</span>,
+  <span class="k">"selfieUrl"</span>:      <span class="s">"…"</span>,
+  <span class="k">"status"</span>: <span class="s">"PENDING"</span>,
+  <span class="k">"rejectionReason"</span>: <span class="k">null</span>,
+  <span class="k">"reviewedById"</span>: <span class="k">null</span>,
+  <span class="k">"reviewedAt"</span>: <span class="k">null</span>,
+  <span class="k">"createdAt"</span>: <span class="s">"…"</span>,
+  <span class="k">"updatedAt"</span>: <span class="s">"…"</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — validation failed (e.g. Ghana Card format), or caller's role is already SELLER / ADMIN</li>
+          <li><code>403</code> — email not verified</li>
+          <li><code>409</code> — application already <code>PENDING</code> or <code>APPROVED</code></li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="sa-me">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/seller-applications/me</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">Return the caller's application, or <code>null</code> if they haven't submitted one.</p>
+      </article>
+
+      <article class="endpoint" id="sa-cancel">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/seller-applications/me/cancel</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">Withdraw a <code>PENDING</code> application. Status moves to <code>CANCELLED</code>; the applicant may re-submit later via <code>POST /seller-applications</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> — caller has no application</li>
+          <li><code>409</code> — application is not in <code>PENDING</code> state (e.g. already approved, rejected, cancelled, or expired)</li>
+        </ul>
+      </article>
+
+      <h2>Endpoints — admin</h2>
+
+      <article class="endpoint" id="sa-admin-list">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/admin/seller-applications</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Paginated list with applicant + reviewer joins. Filter by <code>status</code>.</p>
+        <h3>Query parameters</h3>
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Default</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>status</code></td><td>enum</td><td>—</td><td><code>PENDING</code> / <code>APPROVED</code> / <code>REJECTED</code></td></tr>
+            <tr><td><code>take</code></td><td>int</td><td>20</td><td>Clamped to 1–100</td></tr>
+            <tr><td><code>skip</code></td><td>int</td><td>0</td><td>Offset pagination</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="endpoint" id="sa-admin-get">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/admin/seller-applications/:id</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Fetch a single application by id, with applicant and reviewer summary.</p>
+      </article>
+
+      <article class="endpoint" id="sa-admin-approve">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/admin/seller-applications/:id/approve</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Approve a <code>PENDING</code> application. Inside one transaction: sets <code>status = APPROVED</code>, <code>reviewedById</code> / <code>reviewedAt</code>, <code>approvedAt = now</code>, <code>expiresAt = now + KYC_VERIFICATION_TTL_MONTHS</code> (default 12 months), and updates the applicant's <code>role</code> to <code>SELLER</code>. An approval email is queued.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> — caller isn't ADMIN</li>
+          <li><code>404</code> — application not found</li>
+          <li><code>409</code> — application is not in <code>PENDING</code> state</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="sa-admin-reject">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/admin/seller-applications/:id/reject</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Reject a <code>PENDING</code> application with a reason. A rejection email is queued with the reason in the body. The user may resubmit afterwards.</p>
+        <h3>Request</h3>
+<pre>{ <span class="k">"reason"</span>: <span class="s">"Selfie did not match Ghana Card photo."</span> }</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — reason missing or too short</li>
+          <li><code>403</code> — caller isn't ADMIN</li>
+          <li><code>404</code> — application not found</li>
+          <li><code>409</code> — application is not in <code>PENDING</code> state</li>
+        </ul>
+      </article>
+
+      <div class="footer">
+        Bikoba marketplace — Seller applications module.
+      </div>
+    </article>
+
+    <!-- ──────────── SMS & OTP PAGE ──────────── -->
+    <article class="page" id="sms-page">
+      <header class="hero">
+        <div class="eyebrow">SMS &amp; OTP · API Reference</div>
+        <h1>SMS &amp; OTP</h1>
+        <p>Africa's Talking integration for phone verification (the primary OTP use case today) and transactional SMS for KYC + password-change events. When AT credentials aren't configured, messages are logged to the server console — the rest of the system works unchanged.</p>
+      </header>
+
+      <section>
+        <h2>How it works</h2>
+        <ul>
+          <li><strong>OTP send</strong> is synchronous with graceful fallback: the API issues the code, persists the hash (SHA-256 of <code>phone:code</code>), then tries the SMS provider. If AT or Redis is down, the token still exists and the caller gets a clean response — they can retry with <code>POST /auth/otp/send</code>.</li>
+          <li><strong>Transactional SMS</strong> (KYC events, password-changed) goes through the <code>sms</code> BullMQ queue. Producers enqueue and return; the worker delivers asynchronously with retries.</li>
+          <li>SMS for KYC events only fires when the user has a <strong>verified phone</strong> (<code>phoneVerifiedAt</code> is non-null). Emails always send; SMS layers on top.</li>
+          <li>Phone numbers are validated as <strong>E.164</strong> (e.g. <code>+233241234567</code>). The DB has a unique constraint, so the same number can't be linked to two accounts.</li>
+          <li>Rate limit: <code>OTP_RATE_LIMIT_PER_HOUR</code> sends per phone (default 3), tracked in Redis. Fails open if Redis is unreachable.</li>
+          <li>Attempt limit: <code>OTP_MAX_ATTEMPTS</code> failed verifies (default 5) invalidates the token — caller must request a new code.</li>
+        </ul>
+        <div class="callout">
+          In dev with <code>AT_USERNAME</code> blank, the OTP code appears in the server log (<code>[dev] would send SMS to=...</code>). Copy it into the verify endpoint to complete the flow without setting up AT.
+        </div>
+      </section>
+
+      <section>
+        <h2>Configuration</h2>
+<pre><span class="c"># .env</span>
+<span class="k">AT_USERNAME</span>=<span class="s">sandbox</span>             <span class="c"># or your production username</span>
+<span class="k">AT_API_KEY</span>=<span class="s">&lt;from AT dashboard&gt;</span>
+<span class="k">AT_SENDER_ID</span>=                <span class="c"># optional; blank uses shared short code</span>
+<span class="k">AT_ENVIRONMENT</span>=<span class="s">sandbox</span>          <span class="c"># sandbox | production</span>
+<span class="k">OTP_TTL_MINUTES</span>=<span class="n">5</span>
+<span class="k">OTP_MAX_ATTEMPTS</span>=<span class="n">5</span>
+<span class="k">OTP_RATE_LIMIT_PER_HOUR</span>=<span class="n">3</span></pre>
+      </section>
+
+      <h2>Endpoints</h2>
+
+      <article class="endpoint" id="sms-set-phone">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/users/me/phone</span>
+          <span class="auth-pill required">Verified email</span>
+        </header>
+        <p class="desc">Set or change the authenticated user's phone number. The number is stored unverified; a <code>PHONE_VERIFY</code> OTP is sent immediately. Returns <code>202</code>.</p>
+        <h3>Request</h3>
+<pre>{ <span class="k">"phoneNumber"</span>: <span class="s">"+233241234567"</span> }</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — phone not E.164</li>
+          <li><code>403</code> — email not verified</li>
+          <li><code>409</code> — phone already linked to another account</li>
+          <li><code>429</code> — OTP rate limit exceeded for this phone</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="otp-send">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/auth/otp/send</span>
+          <span class="auth-pill">Public</span>
+        </header>
+        <p class="desc">Issue a fresh 6-digit code to a phone for a given purpose. Previous unused codes for the same (phone, purpose) are invalidated. Returns <code>202</code>.</p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"phoneNumber"</span>: <span class="s">"+233241234567"</span>,
+  <span class="k">"purpose"</span>: <span class="s">"PHONE_VERIFY"</span>   <span class="c">// PHONE_VERIFY | LOGIN | PASSWORD_RESET | CHECKOUT_CONFIRM</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — validation failed</li>
+          <li><code>429</code> — rate limit exceeded (max <code>OTP_RATE_LIMIT_PER_HOUR</code> per phone per hour)</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="otp-verify">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/auth/otp/verify</span>
+          <span class="auth-pill">Public</span>
+        </header>
+        <p class="desc">Verify a 6-digit code. On the <code>PHONE_VERIFY</code> purpose, also sets <code>phoneVerifiedAt</code> on the linked user. Returns <code>200</code> with <code>{ "ok": true }</code>.</p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"phoneNumber"</span>: <span class="s">"+233241234567"</span>,
+  <span class="k">"code"</span>: <span class="s">"123456"</span>,
+  <span class="k">"purpose"</span>: <span class="s">"PHONE_VERIFY"</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — no active code for this phone/purpose</li>
+          <li><code>401</code> — code expired, incorrect, or attempts exhausted</li>
+        </ul>
+      </article>
+
+      <section>
+        <h2>What triggers an SMS automatically</h2>
+        <table>
+          <thead><tr><th>Event</th><th>Job name</th><th>Condition</th></tr></thead>
+          <tbody>
+            <tr><td>Phone number set / changed</td><td>(direct send)</td><td>Always</td></tr>
+            <tr><td>KYC application approved</td><td><code>kyc-approved</code></td><td>User has verified phone</td></tr>
+            <tr><td>KYC application rejected</td><td><code>kyc-rejected</code></td><td>User has verified phone</td></tr>
+            <tr><td>KYC approaching expiry</td><td><code>kyc-expiry-reminder</code></td><td>User has verified phone</td></tr>
+            <tr><td>KYC expired</td><td><code>kyc-expired</code></td><td>User has verified phone</td></tr>
+            <tr><td>Password changed</td><td><code>password-changed</code></td><td>User has verified phone</td></tr>
+            <tr><td>Login from an unrecognised device</td><td><code>new-device-login</code></td><td>User has verified phone; <code>userAgent</code> not seen before</td></tr>
+            <tr><td>New order placed</td><td><code>order-placed</code></td><td>Store owner has verified phone</td></tr>
+            <tr><td>Order shipped</td><td><code>order-shipped</code></td><td>Buyer has verified phone</td></tr>
+            <tr><td>Order out for delivery</td><td><code>order-out-for-delivery</code></td><td>Buyer has verified phone</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <div class="footer">
+        Bikoba marketplace — SMS &amp; OTP module.
       </div>
     </article>
 
@@ -834,8 +1215,12 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
   <span class="k">"description"</span>: <span class="s">"Fresh sourdough, daily."</span>,
   <span class="k">"logoUrl"</span>: <span class="s">"https://cdn.example.com/sunset/logo.png"</span>,    <span class="c">// optional</span>
   <span class="k">"bannerUrl"</span>: <span class="s">"https://cdn.example.com/sunset/banner.jpg"</span>, <span class="c">// optional</span>
-  <span class="k">"isActive"</span>: <span class="k">true</span>                                <span class="c">// optional, defaults true</span>
+  <span class="k">"isActive"</span>: <span class="k">true</span>,                               <span class="c">// optional, defaults true</span>
+  <span class="k">"currency"</span>: <span class="s">"GHS"</span>                                <span class="c">// optional 3-letter ISO; defaults USD. IMMUTABLE after creation.</span>
 }</pre>
+        <div class="callout">
+          The store's <code>currency</code> is set once on creation and cannot be changed via <code>PATCH /stores/:id</code>. Every product in the store and every order placed against it is denominated in this currency.
+        </div>
         <h3>Response 201</h3>
 <pre>{
   <span class="k">"id"</span>: <span class="s">"…"</span>,
@@ -1014,6 +1399,16 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
         </table>
       </section>
 
+      <section>
+        <h2>Caching</h2>
+        <p>Read endpoints are cached in Redis with the namespace <code>cat:</code>.</p>
+        <ul>
+          <li><code>GET /categories</code> → key <code>cat:list:p=…:a=…:f=…</code> · TTL <strong>10 min</strong></li>
+          <li><code>GET /categories/:slug</code> → key <code>cat:slug:&lt;slug&gt;</code> · TTL <strong>30 min</strong></li>
+          <li><code>POST /categories</code> → invalidates the entire <code>cat:*</code> namespace.</li>
+        </ul>
+      </section>
+
       <h2>Endpoints</h2>
 
       <article class="endpoint" id="categories-create">
@@ -1158,6 +1553,20 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
         </div>
       </section>
 
+      <section>
+        <h2>Caching</h2>
+        <p>Read endpoints are cached in Redis with the namespace <code>prod:</code>. TTLs are short because product data (especially <code>stock</code>) changes more often than categories.</p>
+        <ul>
+          <li><code>GET /products</code> → key <code>prod:list:&lt;hash of query&gt;</code> · TTL <strong>60 sec</strong></li>
+          <li><code>GET /products/:id</code> → key <code>prod:id:&lt;id&gt;</code> · TTL <strong>5 min</strong></li>
+          <li><code>POST /products</code> → invalidates <code>prod:list:*</code></li>
+          <li><code>PATCH /products/:id</code> · <code>DELETE /products/:id</code> → invalidates <code>prod:list:*</code> and <code>prod:id:&lt;id&gt;</code></li>
+        </ul>
+        <div class="callout">
+          Up to 60 s of stale <code>stock</code> on cached list responses. If you ever add reservation-at-checkout, that path should bypass the cache and read straight from the DB.
+        </div>
+      </section>
+
       <h2>Endpoints</h2>
 
       <article class="endpoint" id="products-create">
@@ -1175,7 +1584,7 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
   <span class="k">"slug"</span>: <span class="s">"iphone-17-pro"</span>,
   <span class="k">"description"</span>: <span class="s">"Latest flagship"</span>,
   <span class="k">"price"</span>: <span class="n">1199.00</span>,
-  <span class="k">"currency"</span>: <span class="s">"USD"</span>,             <span class="c">// optional, default "USD"</span>
+  <span class="k">"currency"</span>: <span class="s">"USD"</span>,             <span class="c">// optional — inherits from the store. If sent, must match store currency.</span>
   <span class="k">"sku"</span>: <span class="s">"IP17P-256-BLK"</span>,        <span class="c">// optional, unique</span>
   <span class="k">"stock"</span>: <span class="n">25</span>,                  <span class="c">// optional, default 0</span>
   <span class="k">"images"</span>: [<span class="s">"https://cdn.example.com/iphone-1.jpg"</span>], <span class="c">// optional</span>
@@ -1281,12 +1690,174 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
       </div>
     </article>
 
+    <!-- ──────────── ORDERS PAGE ──────────── -->
+    <article class="page" id="orders-page">
+      <header class="hero">
+        <div class="eyebrow">Orders · API Reference</div>
+        <h1>Orders</h1>
+        <p>Buyers place orders against a single store at a time. Each order captures price + name snapshots so the historical record stays stable when products change. Status transitions are seller-only; SMS notifications fire automatically when the recipient has a verified phone.</p>
+      </header>
+
+      <section>
+        <h2>How it works</h2>
+        <ul>
+          <li>One order = items from one store. To buy from multiple stores, the client places multiple orders.</li>
+          <li>Order rows snapshot the product's <code>name</code>, <code>slug</code>, <code>unitPrice</code>, and <code>currency</code> at the moment of purchase. Later product edits don't rewrite history.</li>
+          <li>Currency is the <strong>store's</strong> currency — products in a store all share it, so mixed-currency orders can't happen.</li>
+          <li>Status flow: <code>CONFIRMED</code> → <code>SHIPPED</code> → <code>OUT_FOR_DELIVERY</code> → <code>DELIVERED</code>. <code>CANCELLED</code> is reachable only from <code>CONFIRMED</code>.</li>
+          <li><strong>Stock is decremented atomically</strong> in the same Prisma <code>$transaction</code> that creates the order. The decrement is guarded by <code>WHERE stock &gt;= quantity</code>; if any item fails the check the entire transaction rolls back with a <code>409</code> citing the out-of-stock product. Concurrent orders for the last unit of a product can't both succeed.</li>
+          <li><strong>Cancel restores stock</strong> for every item in the same transactional pattern. Only orders in <code>CONFIRMED</code> are cancellable.</li>
+          <li>Payment isn't modelled yet — orders default to <code>CONFIRMED</code>. A payments integration would add a <code>PENDING_PAYMENT</code> state before <code>CONFIRMED</code>.</li>
+        </ul>
+        <div class="callout">
+          When a buyer creates an order, the store owner gets <strong>both SMS and email</strong> (<code>order-placed</code> / <code>order-placed-seller</code>). When the seller transitions to <code>SHIPPED</code> or <code>OUT_FOR_DELIVERY</code>, the buyer gets both too. SMS is gated on verified phone; email always sends.
+        </div>
+      </section>
+
+      <section>
+        <h2>States</h2>
+        <table>
+          <thead><tr><th>Status</th><th>Meaning</th><th>Next transitions</th></tr></thead>
+          <tbody>
+            <tr><td><code>CONFIRMED</code></td><td>Order placed, awaiting fulfilment</td><td><code>ship</code>, <code>cancel</code></td></tr>
+            <tr><td><code>SHIPPED</code></td><td>Seller has dispatched</td><td><code>out-for-delivery</code></td></tr>
+            <tr><td><code>OUT_FOR_DELIVERY</code></td><td>Courier has it; arriving today</td><td><code>deliver</code></td></tr>
+            <tr><td><code>DELIVERED</code></td><td>Received by buyer</td><td>(terminal)</td></tr>
+            <tr><td><code>CANCELLED</code></td><td>Cancelled before shipment</td><td>(terminal)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <h2>Endpoints</h2>
+
+      <article class="endpoint" id="orders-create">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/orders</span>
+          <span class="auth-pill required">Verified email</span>
+        </header>
+        <p class="desc">Place an order against a single store. Items must all belong to that store and share a currency.</p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"storeId"</span>: <span class="s">"…"</span>,
+  <span class="k">"items"</span>: [
+    { <span class="k">"productId"</span>: <span class="s">"…"</span>, <span class="k">"quantity"</span>: <span class="n">2</span> },
+    { <span class="k">"productId"</span>: <span class="s">"…"</span>, <span class="k">"quantity"</span>: <span class="n">1</span> }
+  ],
+  <span class="k">"shippingAddress"</span>: <span class="s">"12 Liberation Rd, Accra"</span>,
+  <span class="k">"notes"</span>: <span class="s">"Leave at the gate"</span>     <span class="c">// optional</span>
+}</pre>
+        <h3>Response 201</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"buyerId"</span>: <span class="s">"…"</span>,
+  <span class="k">"storeId"</span>: <span class="s">"…"</span>,
+  <span class="k">"status"</span>: <span class="s">"CONFIRMED"</span>,
+  <span class="k">"totalAmount"</span>: <span class="s">"42.50"</span>,
+  <span class="k">"currency"</span>: <span class="s">"GHS"</span>,
+  <span class="k">"shippingAddress"</span>: <span class="s">"…"</span>,
+  <span class="k">"items"</span>: [
+    { <span class="k">"productName"</span>: <span class="s">"Whole-grain loaf"</span>, <span class="k">"unitPrice"</span>: <span class="s">"7.50"</span>, <span class="k">"quantity"</span>: <span class="n">2</span>, … },
+    …
+  ],
+  <span class="k">"createdAt"</span>: <span class="s">"…"</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — store inactive, or product missing / inactive / from a different store</li>
+          <li><code>403</code> — email not verified</li>
+          <li><code>409</code> — insufficient stock for one of the items (transaction rolled back, no row created)</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="orders-mine">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/orders/me</span>
+          <span class="auth-pill required">Bearer token</span>
+        </header>
+        <p class="desc">Buyer's own order history. Filter by <code>status</code>; paginate via <code>take</code> / <code>skip</code>.</p>
+      </article>
+
+      <article class="endpoint" id="orders-for-store">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/orders/store/:storeId</span>
+          <span class="auth-pill required">Store owner or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">All orders for a store, including the buyer's id, email, and full name. Used by sellers to manage fulfilment.</p>
+      </article>
+
+      <article class="endpoint" id="orders-get">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/orders/:id</span>
+          <span class="auth-pill required">Buyer, store owner, or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Full order with items, store summary, and buyer summary.</p>
+      </article>
+
+      <article class="endpoint" id="orders-ship">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/orders/:id/ship</span>
+          <span class="auth-pill required">Store owner or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Transition <code>CONFIRMED → SHIPPED</code>. Sets <code>shippedAt</code>. Queues an <code>order-shipped</code> SMS to the buyer.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> — caller doesn't own the store</li>
+          <li><code>404</code> — order not found</li>
+          <li><code>409</code> — order not in <code>CONFIRMED</code> state</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="orders-ofd">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/orders/:id/out-for-delivery</span>
+          <span class="auth-pill required">Store owner or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Transition <code>SHIPPED → OUT_FOR_DELIVERY</code>. Sets <code>outForDeliveryAt</code>. Queues an <code>order-out-for-delivery</code> SMS to the buyer.</p>
+      </article>
+
+      <article class="endpoint" id="orders-deliver">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/orders/:id/deliver</span>
+          <span class="auth-pill required">Store owner or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Transition <code>OUT_FOR_DELIVERY → DELIVERED</code>. Sets <code>deliveredAt</code>. No SMS sent — delivery confirmation is typically a quieter event.</p>
+      </article>
+
+      <article class="endpoint" id="orders-cancel">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/orders/:id/cancel</span>
+          <span class="auth-pill required">Buyer, store owner, or <span class="role admin">ADMIN</span></span>
+        </header>
+        <p class="desc">Cancel a <code>CONFIRMED</code> order. Both buyer and seller can initiate; either's cancel is final. Records <code>cancelledAt</code> and optional <code>cancellationReason</code>.</p>
+        <h3>Request</h3>
+<pre>{ <span class="k">"reason"</span>: <span class="s">"Item out of stock"</span> }   <span class="c">// optional</span>
+</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> — caller is neither the buyer nor the store owner</li>
+          <li><code>409</code> — order already shipped, delivered, or cancelled</li>
+        </ul>
+      </article>
+
+      <div class="footer">
+        Bikoba marketplace — Orders module.
+      </div>
+    </article>
+
     <!-- ──────────── MEDIA PAGE ──────────── -->
     <article class="page" id="media-page">
       <header class="hero">
         <div class="eyebrow">Media · API Reference</div>
         <h1>Image uploads</h1>
-        <p>Multipart upload endpoint that streams images to <strong>Cloudflare R2</strong> and returns a public URL. Plug the URL into <code>Store.logoUrl</code>, <code>Store.bannerUrl</code>, <code>Product.images</code>, or anywhere else you store image references.</p>
+        <p>Multipart upload endpoint. With <strong>Cloudflare R2</strong> configured, images stream to R2 and return a CDN URL. Without R2, the same endpoint falls back to the local <code>./images</code> folder and returns a same-origin URL — no client changes either way.</p>
       </header>
 
       <section>
@@ -1294,14 +1865,19 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
         <ul>
           <li>Client POSTs <code>multipart/form-data</code> with a field named <code>file</code>.</li>
           <li>Server validates MIME (<code>image/jpeg</code>, <code>image/png</code>, <code>image/webp</code>, <code>image/gif</code>) and size (<code>MAX_UPLOAD_BYTES</code>, default <strong>8 MB</strong>).</li>
-          <li>Server generates a random key (<code>images/YYYY/MM/&lt;hex&gt;.&lt;ext&gt;</code>), streams the buffer to R2 with the original <code>Content-Type</code> and a one-year immutable cache header.</li>
-          <li>Response includes the public URL — assembled from <code>R2_PUBLIC_URL</code> (your custom Cloudflare domain) plus the key. URLs are immutable; uploading the same file again produces a new key.</li>
+          <li>Generates a key of the form <code>images/YYYY/MM/&lt;hex&gt;.&lt;ext&gt;</code>.</li>
+          <li><strong>If R2 is configured</strong> — uploads to the bucket with the original <code>Content-Type</code> and a one-year immutable cache header. URL: <code>${'$'}{R2_PUBLIC_URL}/${'$'}{key}</code>.</li>
+          <li><strong>If R2 is not configured</strong> — writes the buffer to <code>./images/YYYY/MM/&lt;hex&gt;.&lt;ext&gt;</code> on disk. URL: <code>${'$'}{APP_URL}/${'$'}{key}</code>. Files are served by an Express static handler mounted at <code>/images</code>.</li>
+          <li>Response includes a <code>storage: "r2" | "local"</code> field so the client can tell which path was taken. URLs are immutable in both modes.</li>
         </ul>
+        <div class="callout">
+          The <code>./images</code> folder is gitignored. It's intended for dev / single-instance setups — for production with multiple replicas, configure R2 (or another shared object store) so every node serves the same URLs.
+        </div>
       </section>
 
       <section>
         <h2>Configuration</h2>
-        <p>R2 credentials are read from environment variables. Either set <em>all</em> R2_* vars or leave them all blank — partial config fails at startup. With nothing configured, the server still boots; the upload endpoint returns <code>503</code>.</p>
+        <p>R2 credentials are read from environment variables. Either set <em>all</em> R2_* vars or leave them all blank — partial config fails at startup. With nothing configured, the upload endpoint still works and writes to local disk.</p>
 <pre><span class="c"># .env</span>
 <span class="k">R2_ACCOUNT_ID</span>=<span class="s">abc123…</span>
 <span class="k">R2_ACCESS_KEY_ID</span>=<span class="s">…</span>
@@ -1331,12 +1907,22 @@ curl -X POST http://localhost:3000/media/images \\
   -H <span class="s">"Authorization: Bearer &lt;accessToken&gt;"</span> \\
   -F <span class="s">"file=@./photo.jpg"</span></pre>
 
-        <h3>Response 201</h3>
+        <h3>Response 201 — R2 mode</h3>
 <pre>{
   <span class="k">"key"</span>: <span class="s">"images/2026/05/9f3a…0c.jpg"</span>,
   <span class="k">"url"</span>: <span class="s">"https://cdn.bikoba.com/images/2026/05/9f3a…0c.jpg"</span>,
   <span class="k">"contentType"</span>: <span class="s">"image/jpeg"</span>,
-  <span class="k">"size"</span>: <span class="n">204815</span>
+  <span class="k">"size"</span>: <span class="n">204815</span>,
+  <span class="k">"storage"</span>: <span class="s">"r2"</span>
+}</pre>
+
+        <h3>Response 201 — local-fallback mode</h3>
+<pre>{
+  <span class="k">"key"</span>: <span class="s">"images/2026/05/9f3a…0c.jpg"</span>,
+  <span class="k">"url"</span>: <span class="s">"http://localhost:3000/images/2026/05/9f3a…0c.jpg"</span>,
+  <span class="k">"contentType"</span>: <span class="s">"image/jpeg"</span>,
+  <span class="k">"size"</span>: <span class="n">204815</span>,
+  <span class="k">"storage"</span>: <span class="s">"local"</span>
 }</pre>
 
         <h3>Errors</h3>
@@ -1344,8 +1930,7 @@ curl -X POST http://localhost:3000/media/images \\
           <li><code>400</code> — file missing, wrong MIME type, or larger than <code>MAX_UPLOAD_BYTES</code></li>
           <li><code>401</code> — no/invalid bearer token</li>
           <li><code>403</code> — caller's email isn't verified</li>
-          <li><code>500</code> — R2 PUT failed (network/credentials)</li>
-          <li><code>503</code> — R2 is not configured on the server</li>
+          <li><code>500</code> — upload failed (R2 network/credentials, or local disk write error)</li>
         </ul>
       </article>
 

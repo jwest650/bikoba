@@ -30,7 +30,8 @@ import { StoresService } from './stores.service';
 export class StoresController {
   constructor(private readonly stores: StoresService) {}
 
-  @UseGuards(EmailVerifiedGuard)
+  @UseGuards(RolesGuard, EmailVerifiedGuard)
+  @Roles(Role.SELLER, Role.ADMIN)
   @RequireVerified()
   @Post()
   @HttpCode(HttpStatus.CREATED)

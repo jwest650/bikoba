@@ -7,6 +7,7 @@ import {
 import type { Category } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 
 export interface ListCategoriesQuery {
@@ -15,9 +16,16 @@ export interface ListCategoriesQuery {
   isFeatured?: boolean;
 }
 
+const LIST_TTL = 600;
+const ITEM_TTL = 1800;
+const NAMESPACE = 'cat';
+
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: RedisService,
+  ) {}
 
   async create(dto: CreateCategoryDto): Promise<Category> {
     let level = 0;
@@ -33,7 +41,7 @@ export class CategoriesService {
     }
 
     try {
-      return await this.prisma.category.create({
+      const created = await this.prisma.category.create({
         data: {
           name: dto.name,
           slug: dto.slug,
@@ -49,6 +57,8 @@ export class CategoriesService {
           metaDescription: dto.metaDescription,
         },
       });
+      await this.cache.delByPattern(`${NAMESPACE}:*`);
+      return created;
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -61,29 +71,39 @@ export class CategoriesService {
   }
 
   findAll(query: ListCategoriesQuery): Promise<Category[]> {
-    const where: Prisma.CategoryWhereInput = {};
-    if (query.parentId === null) {
-      where.parentId = null;
-    } else if (typeof query.parentId === 'string') {
-      where.parentId = query.parentId;
-    }
-    if (typeof query.isActive === 'boolean') where.isActive = query.isActive;
-    if (typeof query.isFeatured === 'boolean') where.isFeatured = query.isFeatured;
+    const key = `${NAMESPACE}:list:p=${
+      query.parentId === null ? 'root' : query.parentId ?? 'any'
+    }:a=${query.isActive ?? 'any'}:f=${query.isFeatured ?? 'any'}`;
 
-    return this.prisma.category.findMany({
-      where,
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    return this.cache.wrap(key, LIST_TTL, () => {
+      const where: Prisma.CategoryWhereInput = {};
+      if (query.parentId === null) {
+        where.parentId = null;
+      } else if (typeof query.parentId === 'string') {
+        where.parentId = query.parentId;
+      }
+      if (typeof query.isActive === 'boolean') where.isActive = query.isActive;
+      if (typeof query.isFeatured === 'boolean') where.isFeatured = query.isFeatured;
+
+      return this.prisma.category.findMany({
+        where,
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      });
     });
   }
 
   async findBySlug(slug: string): Promise<Category> {
-    const category = await this.prisma.category.findUnique({
-      where: { slug },
-      include: { children: { orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] } },
+    return this.cache.wrap(`${NAMESPACE}:slug:${slug}`, ITEM_TTL, async () => {
+      const category = await this.prisma.category.findUnique({
+        where: { slug },
+        include: {
+          children: { orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] },
+        },
+      });
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
+      return category;
     });
-    if (!category) {
-      throw new NotFoundException('Category not found');
-    }
-    return category;
   }
 }

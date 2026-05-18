@@ -25,26 +25,18 @@ export class StoresService {
 
   async create(dto: CreateStoreDto, caller: AuthenticatedUser): Promise<Store> {
     try {
-      const [store] = await this.prisma.$transaction([
-        this.prisma.store.create({
-          data: {
-            name: dto.name,
-            slug: dto.slug,
-            description: dto.description,
-            logoUrl: dto.logoUrl,
-            bannerUrl: dto.bannerUrl,
-            isActive: dto.isActive ?? true,
-            ownerId: caller.id,
-          },
-        }),
-        // Promote BUYER → SELLER on first store creation. ADMIN stays ADMIN.
-        this.prisma.user.update({
-          where: { id: caller.id },
-          data:
-            caller.role === Role.BUYER ? { role: Role.SELLER } : { role: caller.role },
-        }),
-      ]);
-      return store;
+      return await this.prisma.store.create({
+        data: {
+          name: dto.name,
+          slug: dto.slug,
+          description: dto.description,
+          logoUrl: dto.logoUrl,
+          bannerUrl: dto.bannerUrl,
+          isActive: dto.isActive ?? true,
+          currency: dto.currency ?? 'USD',
+          ownerId: caller.id,
+        },
+      });
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&

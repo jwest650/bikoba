@@ -2,14 +2,20 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
 import { JwtService } from '@nestjs/jwt';
 import { Role, type Session, type User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import type { Queue } from 'bullmq';
 import { randomBytes, randomUUID } from 'crypto';
+import { UAParser } from 'ua-parser-js';
 import { PrismaService } from '../prisma/prisma.service';
+import { QUEUE_SMS } from '../queue/queue.constants';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { EmailVerificationService } from './email-verification.service';
@@ -37,6 +43,7 @@ interface DeviceMeta {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly accessTtl: string;
   private readonly refreshTtl: string;
   private readonly refreshTtlMs: number;
@@ -46,6 +53,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly emailVerification: EmailVerificationService,
+    @InjectQueue(QUEUE_SMS) private readonly smsQueue: Queue,
     config: ConfigService,
   ) {
     this.accessTtl = config.get<string>('JWT_ACCESS_TTL', '15m');
@@ -92,7 +100,41 @@ export class AuthService {
     if (!valid) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    return this.issueSession(user, device);
+
+    // Check BEFORE issuing the new session so it doesn't match itself.
+    const fingerprint = computeFingerprint(device.userAgent);
+    const isKnownDevice = await this.isKnownDevice(user.id, fingerprint);
+
+    const response = await this.issueSession(user, device);
+
+    if (
+      !isKnownDevice &&
+      user.phoneNumber &&
+      user.phoneVerifiedAt
+    ) {
+      try {
+        await this.smsQueue.add('new-device-login', { to: user.phoneNumber });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to enqueue new-device-login SMS: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return response;
+  }
+
+  private async isKnownDevice(
+    userId: string,
+    fingerprint: string | null,
+  ): Promise<boolean> {
+    // If we can't fingerprint the request, treat it as known to avoid noise.
+    if (!fingerprint) return true;
+    const match = await this.prisma.session.findFirst({
+      where: { userId, deviceFingerprint: fingerprint },
+      select: { id: true },
+    });
+    return match !== null;
   }
 
   async refresh(
@@ -146,6 +188,59 @@ export class AuthService {
     });
   }
 
+  /**
+   * Change the caller's password. Verifies the current password, rehashes the
+   * new one, and revokes every active session so existing tokens can't be
+   * used after the change. Returns a fresh token pair for the calling device.
+   */
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+    device: DeviceMeta,
+  ): Promise<AuthTokens> {
+    if (dto.currentPassword === dto.newPassword) {
+      throw new ConflictException(
+        'New password must differ from current password',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User no longer has access');
+    }
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, this.saltRounds);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      }),
+      this.prisma.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    // Notify by SMS if a verified phone is on file.
+    if (user.phoneNumber && user.phoneVerifiedAt) {
+      try {
+        await this.smsQueue.add('password-changed', { to: user.phoneNumber });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to enqueue password-changed SMS: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    const { tokens } = await this.issueSession(user, device);
+    return tokens;
+  }
+
   private async issueSession(
     user: User,
     device: DeviceMeta,
@@ -161,6 +256,7 @@ export class AuthService {
         refreshTokenHash,
         userAgent: device.userAgent,
         ipAddress: device.ipAddress,
+        deviceFingerprint: computeFingerprint(device.userAgent),
         expiresAt: new Date(Date.now() + this.refreshTtlMs),
       },
     });
@@ -189,12 +285,14 @@ export class AuthService {
     const refreshToken = await this.signRefreshToken(user.id, session.id);
     const refreshTokenHash = await bcrypt.hash(refreshToken, this.saltRounds);
 
+    const userAgent = device.userAgent ?? session.userAgent;
     await this.prisma.session.update({
       where: { id: session.id },
       data: {
         refreshTokenHash,
-        userAgent: device.userAgent ?? session.userAgent,
+        userAgent,
         ipAddress: device.ipAddress ?? session.ipAddress,
+        deviceFingerprint: computeFingerprint(userAgent),
         expiresAt: new Date(Date.now() + this.refreshTtlMs),
       },
     });
@@ -230,6 +328,20 @@ export class AuthService {
       jwtid: randomBytes(16).toString('hex'),
     });
   }
+}
+
+/**
+ * Coarse device fingerprint: browser family + OS family + device type.
+ * Omits version numbers so Chrome auto-updates don't trigger false-positive
+ * "new device" alerts. Returns null when the UA can't be parsed.
+ */
+function computeFingerprint(userAgent: string | null | undefined): string | null {
+  if (!userAgent) return null;
+  const result = UAParser(userAgent);
+  const browser = result.browser.name ?? 'unknown-browser';
+  const os = result.os.name ?? 'unknown-os';
+  const device = result.device.type ?? 'desktop';
+  return `${browser}|${os}|${device}`;
 }
 
 function parseDurationMs(value: string): number {

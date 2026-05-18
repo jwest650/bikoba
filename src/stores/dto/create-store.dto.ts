@@ -39,4 +39,11 @@ export class CreateStoreDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: 'currency must be a 3-letter ISO code (e.g. USD, GHS)',
+  })
+  currency?: string;
 }

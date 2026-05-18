@@ -17,6 +17,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { RequireVerified } from './decorators/verified.decorator';
 import { Roles } from './decorators/roles.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -88,6 +89,16 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
+  }
+
+  @Post('password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ): Promise<AuthTokens> {
+    return this.auth.changePassword(user.id, dto, deviceFrom(req));
   }
 
   @UseGuards(RolesGuard)
