@@ -1,0 +1,32 @@
+node_modules
+dist
+coverage
+test
+
+# Local secrets — never bake into the image. Pass via runtime env.
+.env
+.env.*
+!.env.example
+
+# Local-disk image uploads (R2 fallback storage)
+images
+
+# VCS and editor noise
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+*.swp
+*.log
+
+# Docs that don't belong in a server image
+*.md
+README*
+CLAUDE.md
+ONBOARDING*
+
+# Docker scaffolding
+Dockerfile
+docker-compose*.yml
+.dockerignore

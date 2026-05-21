@@ -2,14 +2,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
-import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // needed for PSP webhook signature verification
   });
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.use(helmet());
   app.enableCors();
   app.set('trust proxy', 1);
   app.useGlobalPipes(
@@ -19,11 +18,6 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  app.useStaticAssets(join(process.cwd(), 'images'), {
-    prefix: '/images',
-    maxAge: '1y',
-    immutable: true,
-  });
   await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();

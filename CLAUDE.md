@@ -28,7 +28,7 @@ Bikoba is a **multi-tenant marketplace API**. Buyers shop, sellers run stores wi
 | `seller-applications` | shipped | KYC flow. BUYER submits Ghana Card + selfie → admin reviews → on approve, role flips to SELLER (with notification email) and `expiresAt = now + KYC_VERIFICATION_TTL_MONTHS`. Applicant can cancel PENDING applications. Two daily BullMQ sweeps: **expiry** (03:00 UTC) flips overdue rows to EXPIRED, demotes the user, deactivates their stores, emails them; **reminders** (03:30 UTC) walks `KYC_REMINDER_OFFSET_DAYS` (default `30,7,1`) and emails sellers approaching expiry, using `lastReminderAt` to dedupe so the same milestone isn't sent twice. Re-submission moves a REJECTED / CANCELLED / EXPIRED row back to PENDING. |
 | `prisma` | shipped | Global `PrismaService` |
 | `mail` | shipped | nodemailer wrapper; console fallback when `SMTP_HOST` is unset |
-| `storage` | shipped | Image uploads (`POST /media/images`). Streams to R2 if configured; otherwise falls back to writing under `./images/` (served at `/images/*` by an Express static handler). |
+| `storage` | shipped | Image uploads (`POST /media/images`) — Cloudflare R2 only. Returns 503 when R2 isn't configured. No local-disk fallback. |
 | `categories` | shipped | Hierarchical product categories |
 | `stores` | shipped | Seller storefronts. Creation requires SELLER or ADMIN role (BUYERs go through `seller-applications` first). Each store has a `currency` (3-letter ISO, default `USD`) that's set at creation and **immutable thereafter** — products in the store inherit it, orders are denominated in it. |
 | `products` | shipped | Products belong to a store; Redis-cached reads, Meili-indexed search. Currency **inherits from the store** — passing `currency` on create/update is only accepted if it matches the store's currency; otherwise 400. |
@@ -89,7 +89,7 @@ All in `.env` (gitignored) / `.env.example` (committed). Validator: `src/config/
 | `REDIS_URL` | no | Default `redis://localhost:6379`; cache + queue no-op when unreachable |
 | `MEILI_HOST`, `MEILI_MASTER_KEY` | no | Blank disables; search falls back to Postgres ILIKE |
 | `SMTP_*` | no | Blank `SMTP_HOST` logs emails to console |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | grouped | **All or none.** Partial config fails at boot. Blank → uploads fall back to `./images/` (gitignored) served at `${APP_URL}/images/*`. |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | grouped | **All or none.** Partial config fails at boot. Blank → `POST /media/images` returns 503. R2 is the only supported storage. |
 | `MAX_UPLOAD_BYTES` | no | Default 8 MiB |
 | `EMAIL_VERIFICATION_TTL_HOURS` | no | Default 24 |
 | `KYC_VERIFICATION_TTL_MONTHS` | no | Default 12. How long an approved seller application stays valid before the daily sweep expires it. |

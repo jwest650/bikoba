@@ -1,16 +1,18 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomBytes } from 'crypto';
-import { promises as fs } from 'fs';
-import { dirname, join } from 'path';
 
 export interface UploadResult {
   key: string;
   url: string;
   contentType: string;
   size: number;
-  storage: 'r2' | 'local';
 }
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -25,16 +27,11 @@ export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private client: S3Client | null = null;
 
-  // R2
   private readonly bucket: string | undefined;
   private readonly publicUrl: string | undefined;
   private readonly accountId: string | undefined;
   private readonly accessKeyId: string | undefined;
   private readonly secretAccessKey: string | undefined;
-
-  // Local fallback
-  private readonly localRoot = process.cwd();
-  private readonly localBaseUrl: string;
 
   constructor(config: ConfigService) {
     this.accountId = config.get<string>('R2_ACCOUNT_ID') || undefined;
@@ -44,9 +41,6 @@ export class StorageService {
     this.bucket = config.get<string>('R2_BUCKET') || undefined;
     this.publicUrl =
       config.get<string>('R2_PUBLIC_URL')?.replace(/\/$/, '') || undefined;
-    this.localBaseUrl = (
-      config.get<string>('APP_URL') ?? 'http://localhost:3000'
-    ).replace(/\/$/, '');
   }
 
   isConfigured(): boolean {
@@ -68,6 +62,11 @@ export class StorageService {
     mimeType: string,
     prefix = 'images',
   ): Promise<UploadResult> {
+    if (!this.isConfigured()) {
+      throw new ServiceUnavailableException(
+        'Image uploads are disabled — Cloudflare R2 is not configured.',
+      );
+    }
     const ext = MIME_TO_EXT[mimeType];
     if (!ext) {
       throw new InternalServerErrorException(
@@ -75,18 +74,6 @@ export class StorageService {
       );
     }
     const key = buildKey(prefix, ext);
-
-    if (this.isConfigured()) {
-      return this.uploadToR2(buffer, key, mimeType);
-    }
-    return this.uploadToLocal(buffer, key, mimeType);
-  }
-
-  private async uploadToR2(
-    buffer: Buffer,
-    key: string,
-    mimeType: string,
-  ): Promise<UploadResult> {
     const client = this.getClient();
     try {
       await client.send(
@@ -107,29 +94,6 @@ export class StorageService {
       url: `${this.publicUrl}/${key}`,
       contentType: mimeType,
       size: buffer.byteLength,
-      storage: 'r2',
-    };
-  }
-
-  private async uploadToLocal(
-    buffer: Buffer,
-    key: string,
-    mimeType: string,
-  ): Promise<UploadResult> {
-    const fullPath = join(this.localRoot, key);
-    try {
-      await fs.mkdir(dirname(fullPath), { recursive: true });
-      await fs.writeFile(fullPath, buffer);
-    } catch (err) {
-      this.logger.error(`Local image write failed for ${fullPath}`, err as Error);
-      throw new InternalServerErrorException('Failed to store image');
-    }
-    return {
-      key,
-      url: `${this.localBaseUrl}/${key}`,
-      contentType: mimeType,
-      size: buffer.byteLength,
-      storage: 'local',
     };
   }
 

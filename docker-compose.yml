@@ -1,0 +1,108 @@
+# Production-shaped Bikoba stack.
+#
+#   docker compose up -d --build              → nginx + app + postgres + redis
+#   docker compose --profile search up -d     → also runs Meilisearch
+#
+# Only nginx publishes a port to the host. The app, Postgres, and Redis stay
+# on the internal `bikoba-net` network — reachable from each other but not
+# from outside the host.
+#
+# DATABASE_URL and REDIS_URL are overridden here to point at the in-network
+# services, so your .env can keep whatever local-dev values it has.
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: bikoba-nginx
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+      # Uncomment when terminating TLS at the origin:
+      # - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      bikoba:
+        condition: service_started
+    networks:
+      - bikoba-net
+
+  bikoba:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bikoba:latest
+    container_name: bikoba-api
+    restart: unless-stopped
+    # No host port — only nginx fronts this service.
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # Override the URLs from .env so the app uses the in-network services.
+      DATABASE_URL: "postgresql://postgres:${POSTGRES_PASSWORD:-rootpass}@postgres:5432/${POSTGRES_DB:-bikoba}?schema=public"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bikoba-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bikoba-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rootpass}
+      POSTGRES_DB: ${POSTGRES_DB:-bikoba}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-bikoba}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - bikoba-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: bikoba-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - bikoba-net
+
+  # ── Optional: Meilisearch. Start with --profile search.
+  meilisearch:
+    profiles: ["search"]
+    image: getmeili/meilisearch:v1.10
+    container_name: bikoba-meili
+    restart: unless-stopped
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-change-me}
+    volumes:
+      - meili-data:/meili_data
+    networks:
+      - bikoba-net
+
+networks:
+  bikoba-net:
+    driver: bridge
+
+volumes:
+  pg-data:
+  redis-data:
+  meili-data:

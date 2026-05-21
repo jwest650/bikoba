@@ -2190,7 +2190,7 @@ curl .../payments/verify?reference=pay_…
       <header class="hero">
         <div class="eyebrow">Media · API Reference</div>
         <h1>Image uploads</h1>
-        <p>Multipart upload endpoint. With <strong>Cloudflare R2</strong> configured, images stream to R2 and return a CDN URL. Without R2, the same endpoint falls back to the local <code>./images</code> folder and returns a same-origin URL — no client changes either way.</p>
+        <p>Multipart upload endpoint that streams images to <strong>Cloudflare R2</strong> and returns a public CDN URL. R2 is the only supported backend — the endpoint returns <code>503</code> if R2 isn't configured.</p>
       </header>
 
       <section>
@@ -2198,19 +2198,15 @@ curl .../payments/verify?reference=pay_…
         <ul>
           <li>Client POSTs <code>multipart/form-data</code> with a field named <code>file</code>.</li>
           <li>Server validates MIME (<code>image/jpeg</code>, <code>image/png</code>, <code>image/webp</code>, <code>image/gif</code>) and size (<code>MAX_UPLOAD_BYTES</code>, default <strong>8 MB</strong>).</li>
-          <li>Generates a key of the form <code>images/YYYY/MM/&lt;hex&gt;.&lt;ext&gt;</code>.</li>
-          <li><strong>If R2 is configured</strong> — uploads to the bucket with the original <code>Content-Type</code> and a one-year immutable cache header. URL: <code>${'$'}{R2_PUBLIC_URL}/${'$'}{key}</code>.</li>
-          <li><strong>If R2 is not configured</strong> — writes the buffer to <code>./images/YYYY/MM/&lt;hex&gt;.&lt;ext&gt;</code> on disk. URL: <code>${'$'}{APP_URL}/${'$'}{key}</code>. Files are served by an Express static handler mounted at <code>/images</code>.</li>
-          <li>Response includes a <code>storage: "r2" | "local"</code> field so the client can tell which path was taken. URLs are immutable in both modes.</li>
+          <li>Generates an immutable key of the form <code>images/YYYY/MM/&lt;hex&gt;.&lt;ext&gt;</code>.</li>
+          <li>Streams the buffer to the R2 bucket with the original <code>Content-Type</code> and a one-year immutable cache header.</li>
+          <li>Response includes the public URL — assembled from <code>R2_PUBLIC_URL</code> plus the key. URLs never collide; uploading the same file twice produces two distinct URLs.</li>
         </ul>
-        <div class="callout">
-          The <code>./images</code> folder is gitignored. It's intended for dev / single-instance setups — for production with multiple replicas, configure R2 (or another shared object store) so every node serves the same URLs.
-        </div>
       </section>
 
       <section>
         <h2>Configuration</h2>
-        <p>R2 credentials are read from environment variables. Either set <em>all</em> R2_* vars or leave them all blank — partial config fails at startup. With nothing configured, the upload endpoint still works and writes to local disk.</p>
+        <p>All five R2 env vars must be set together. Partial config fails at boot. With nothing configured, the upload endpoint returns <code>503</code> until the secrets are filled in — every other endpoint works unchanged.</p>
 <pre><span class="c"># .env</span>
 <span class="k">R2_ACCOUNT_ID</span>=<span class="s">abc123…</span>
 <span class="k">R2_ACCESS_KEY_ID</span>=<span class="s">…</span>
@@ -2240,22 +2236,12 @@ curl -X POST http://localhost:3000/media/images \\
   -H <span class="s">"Authorization: Bearer &lt;accessToken&gt;"</span> \\
   -F <span class="s">"file=@./photo.jpg"</span></pre>
 
-        <h3>Response 201 — R2 mode</h3>
+        <h3>Response 201</h3>
 <pre>{
   <span class="k">"key"</span>: <span class="s">"images/2026/05/9f3a…0c.jpg"</span>,
   <span class="k">"url"</span>: <span class="s">"https://cdn.bikoba.com/images/2026/05/9f3a…0c.jpg"</span>,
   <span class="k">"contentType"</span>: <span class="s">"image/jpeg"</span>,
-  <span class="k">"size"</span>: <span class="n">204815</span>,
-  <span class="k">"storage"</span>: <span class="s">"r2"</span>
-}</pre>
-
-        <h3>Response 201 — local-fallback mode</h3>
-<pre>{
-  <span class="k">"key"</span>: <span class="s">"images/2026/05/9f3a…0c.jpg"</span>,
-  <span class="k">"url"</span>: <span class="s">"http://localhost:3000/images/2026/05/9f3a…0c.jpg"</span>,
-  <span class="k">"contentType"</span>: <span class="s">"image/jpeg"</span>,
-  <span class="k">"size"</span>: <span class="n">204815</span>,
-  <span class="k">"storage"</span>: <span class="s">"local"</span>
+  <span class="k">"size"</span>: <span class="n">204815</span>
 }</pre>
 
         <h3>Errors</h3>
@@ -2263,7 +2249,8 @@ curl -X POST http://localhost:3000/media/images \\
           <li><code>400</code> — file missing, wrong MIME type, or larger than <code>MAX_UPLOAD_BYTES</code></li>
           <li><code>401</code> — no/invalid bearer token</li>
           <li><code>403</code> — caller's email isn't verified</li>
-          <li><code>500</code> — upload failed (R2 network/credentials, or local disk write error)</li>
+          <li><code>500</code> — R2 PUT failed (network / bad credentials / bucket misconfigured)</li>
+          <li><code>503</code> — R2 is not configured on the server</li>
         </ul>
       </article>
 
