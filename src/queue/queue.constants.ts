@@ -1,6 +1,7 @@
 export const QUEUE_EMAIL = 'email';
 export const QUEUE_KYC = 'kyc';
 export const QUEUE_SMS = 'sms';
+export const QUEUE_PAYMENTS = 'payments';
 
 export type EmailJob =
   | { name: 'verification'; data: { to: string; link: string } }
@@ -56,6 +57,18 @@ export type KycJob =
     };
 
 export type KycJobName = KycJob['name'];
+
+export type PaymentsJob =
+  | {
+      name: 'reconcile-payments';
+      data: Record<string, never>;
+    }
+  | {
+      name: 'cancel-abandoned-orders';
+      data: Record<string, never>;
+    };
+
+export type PaymentsJobName = PaymentsJob['name'];
 
 export type SmsJob =
   | { name: 'kyc-approved'; data: { to: string } }

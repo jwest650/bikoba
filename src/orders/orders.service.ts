@@ -75,14 +75,6 @@ export class OrdersService {
         name: true,
         isActive: true,
         currency: true,
-        owner: {
-          select: {
-            id: true,
-            email: true,
-            phoneNumber: true,
-            phoneVerifiedAt: true,
-          },
-        },
       },
     });
     if (!store || !store.isActive) {
@@ -162,7 +154,8 @@ export class OrdersService {
         data: {
           buyerId: buyer.id,
           storeId: dto.storeId,
-          status: OrderStatus.CONFIRMED,
+          // Default is PENDING_PAYMENT from the schema; spelled out for clarity.
+          status: OrderStatus.PENDING_PAYMENT,
           totalAmount: total,
           currency,
           shippingAddress: dto.shippingAddress,
@@ -173,22 +166,69 @@ export class OrdersService {
       });
     });
 
-    await this.enqueueSmsIfPhoneVerified(store.owner, 'order-placed', {
-      orderId: order.id,
-      itemCount: itemRows.length,
-      totalAmount: total.toFixed(2),
-      currency,
+    // No order-placed notifications here — they fire from markPaid() once
+    // the PSP confirms payment.
+    return order;
+  }
+
+  /**
+   * Called by PaymentsService when a payment for this order is confirmed
+   * successful. Transitions PENDING_PAYMENT → CONFIRMED, records paidAt, and
+   * fires the order-placed SMS + email to the seller. Idempotent — if the
+   * order is already CONFIRMED or further along, this is a no-op.
+   */
+  async markPaid(orderId: string): Promise<void> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: true,
+        store: {
+          select: {
+            id: true,
+            name: true,
+            owner: {
+              select: {
+                id: true,
+                email: true,
+                phoneNumber: true,
+                phoneVerifiedAt: true,
+              },
+            },
+          },
+        },
+      },
     });
-    await this.enqueueOrderEmail('order-placed-seller', {
-      to: store.owner.email,
-      storeName: store.name,
-      orderId: order.id,
-      itemCount: itemRows.length,
-      totalAmount: total.toFixed(2),
-      currency,
+    if (!order) return;
+    if (order.status !== OrderStatus.PENDING_PAYMENT) {
+      return; // already confirmed (or beyond) — idempotent
+    }
+
+    const now = new Date();
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: OrderStatus.CONFIRMED,
+        paidAt: now,
+      },
     });
 
-    return order;
+    const total = order.totalAmount.toFixed(2);
+    const itemCount = order.items.length;
+
+    await this.enqueueSmsIfPhoneVerified(order.store.owner, 'order-placed', {
+      orderId: order.id,
+      itemCount,
+      totalAmount: total,
+      currency: order.currency,
+    });
+    await this.enqueueOrderEmail('order-placed-seller', {
+      to: order.store.owner.email,
+      storeName: order.store.name,
+      orderId: order.id,
+      itemCount,
+      totalAmount: total,
+      currency: order.currency,
+    });
   }
 
   findMine(buyer: AuthenticatedUser, query: ListOrdersQuery): Promise<Order[]> {
@@ -295,26 +335,89 @@ export class OrdersService {
     ) {
       throw new ForbiddenException('You cannot cancel this order');
     }
-    if (existing.status !== OrderStatus.CONFIRMED) {
+    if (
+      existing.status !== OrderStatus.CONFIRMED &&
+      existing.status !== OrderStatus.PENDING_PAYMENT
+    ) {
       throw new ConflictException(
         `Cannot cancel an order in ${existing.status} state`,
       );
     }
 
-    // Restore stock for each item in the same transaction as the status flip.
+    return this.cancelInternal(existing.id, dto.reason ?? null);
+  }
+
+  /**
+   * Cancel triggered by a refund. Skips ownership checks (the caller is the
+   * payments service acting on admin's behalf) but otherwise behaves like a
+   * normal cancel — restores stock and records the reason.
+   */
+  async cancelByRefund(orderId: string, reason?: string): Promise<void> {
+    const existing = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, status: true },
+    });
+    if (!existing) return;
+    if (
+      existing.status !== OrderStatus.CONFIRMED &&
+      existing.status !== OrderStatus.PENDING_PAYMENT
+    ) {
+      // Already shipped/delivered/cancelled — refund proceeds but order stays.
+      return;
+    }
+    await this.cancelInternal(orderId, reason ?? 'Refund issued');
+  }
+
+  /**
+   * Daily sweep: cancels PENDING_PAYMENT orders older than `graceHours` and
+   * restores their reserved stock. Mirror of the KYC expiry sweep.
+   */
+  async cancelAbandoned(graceHours: number): Promise<{ cancelled: number }> {
+    if (graceHours <= 0) return { cancelled: 0 };
+    const cutoff = new Date(Date.now() - graceHours * 60 * 60 * 1000);
+    const due = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.PENDING_PAYMENT,
+        createdAt: { lt: cutoff },
+      },
+      select: { id: true },
+    });
+    let cancelled = 0;
+    for (const o of due) {
+      try {
+        await this.cancelInternal(o.id, 'Payment timed out');
+        cancelled++;
+      } catch (err) {
+        this.logger.error(
+          `Abandoned-cart cancel failed for ${o.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return { cancelled };
+  }
+
+  private async cancelInternal(
+    orderId: string,
+    reason: string | null,
+  ): Promise<Order> {
+    const items = await this.prisma.orderItem.findMany({
+      where: { orderId },
+      select: { productId: true, quantity: true },
+    });
+
     return this.prisma.$transaction(async (tx) => {
-      for (const item of existing.items) {
+      for (const item of items) {
         await tx.product.update({
           where: { id: item.productId },
           data: { stock: { increment: item.quantity } },
         });
       }
       return tx.order.update({
-        where: { id },
+        where: { id: orderId },
         data: {
           status: OrderStatus.CANCELLED,
           cancelledAt: new Date(),
-          cancellationReason: dto.reason,
+          cancellationReason: reason,
         },
         include: ORDER_WITH_RELATIONS.include,
       });

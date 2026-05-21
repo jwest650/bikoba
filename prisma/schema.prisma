@@ -29,11 +29,40 @@ enum OtpPurpose {
 }
 
 enum OrderStatus {
+  PENDING_PAYMENT
   CONFIRMED
   SHIPPED
   OUT_FOR_DELIVERY
   DELIVERED
   CANCELLED
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  FLUTTERWAVE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+  ABANDONED
+}
+
+enum PaymentChannel {
+  CARD
+  MOBILE_MONEY
+  BANK_TRANSFER
+  USSD
+  OTHER
+}
+
+enum ReconcileEventKind {
+  PHANTOM         // PSP reports a successful transaction we have no record of.
+  MISMATCH        // PSP and our amount/currency disagree.
+  RECONCILED      // Drift repaired: PSP says SUCCESS, we promoted PENDING/FAILED → SUCCESS.
+  STUCK_RESOLVED  // Payment was already SUCCESS but Order was stuck in PENDING_PAYMENT.
 }
 
 model User {
@@ -227,11 +256,12 @@ model Order {
   id                 String      @id @default(uuid())
   buyerId            String
   storeId            String
-  status             OrderStatus @default(CONFIRMED)
+  status             OrderStatus @default(PENDING_PAYMENT)
   totalAmount        Decimal     @db.Decimal(12, 2)
   currency           String
   shippingAddress    String
   notes              String?
+  paidAt             DateTime?
   shippedAt          DateTime?
   outForDeliveryAt   DateTime?
   deliveredAt        DateTime?
@@ -240,14 +270,42 @@ model Order {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
-  buyer User       @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
-  store Store      @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  items OrderItem[]
+  buyer    User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  store    Store       @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  items    OrderItem[]
+  payments Payment[]
 
   @@index([buyerId])
   @@index([storeId])
   @@index([status])
   @@index([createdAt])
+}
+
+model Payment {
+  id             String          @id @default(uuid())
+  orderId        String
+  provider       PaymentProvider
+  reference      String          @unique
+  providerRef    String?
+  amount         Decimal         @db.Decimal(12, 2)
+  currency       String
+  channel        PaymentChannel?
+  status         PaymentStatus   @default(PENDING)
+  initResponse   Json?
+  verifyResponse Json?
+  refundResponse Json?
+  refundReason   String?
+  initiatedAt    DateTime        @default(now())
+  completedAt    DateTime?
+  failedAt       DateTime?
+  refundedAt     DateTime?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([status])
+  @@index([provider])
+  @@index([providerRef])
 }
 
 model OrderItem {
@@ -265,4 +323,39 @@ model OrderItem {
 
   @@index([orderId])
   @@index([productId])
+}
+
+model ReconcileRun {
+  id                String   @id @default(uuid())
+  startedAt         DateTime
+  finishedAt        DateTime
+  windowSince       DateTime
+  windowUntil       DateTime
+  scannedByProvider Json
+  reconciledCount   Int      @default(0)
+  stuckCount        Int      @default(0)
+  phantomsCount     Int      @default(0)
+  mismatchesCount   Int      @default(0)
+  durationMs        Int
+  createdAt         DateTime @default(now())
+
+  events ReconcileEvent[]
+
+  @@index([startedAt])
+}
+
+model ReconcileEvent {
+  id        String             @id @default(uuid())
+  runId     String
+  kind      ReconcileEventKind
+  provider  PaymentProvider?
+  reference String?
+  paymentId String?
+  detail    Json?
+  createdAt DateTime           @default(now())
+
+  run ReconcileRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, kind])
+  @@index([kind, createdAt])
 }

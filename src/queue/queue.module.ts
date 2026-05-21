@@ -3,7 +3,12 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EmailProcessor } from './email.processor';
 import { SmsProcessor } from './sms.processor';
-import { QUEUE_EMAIL, QUEUE_KYC, QUEUE_SMS } from './queue.constants';
+import {
+  QUEUE_EMAIL,
+  QUEUE_KYC,
+  QUEUE_PAYMENTS,
+  QUEUE_SMS,
+} from './queue.constants';
 
 @Global()
 @Module({
@@ -39,6 +44,7 @@ import { QUEUE_EMAIL, QUEUE_KYC, QUEUE_SMS } from './queue.constants';
       { name: QUEUE_EMAIL },
       { name: QUEUE_KYC },
       { name: QUEUE_SMS },
+      { name: QUEUE_PAYMENTS },
     ),
   ],
   providers: [EmailProcessor, SmsProcessor],

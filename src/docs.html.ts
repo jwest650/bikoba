@@ -123,7 +123,9 @@ export const DOCS_HTML = `<!doctype html>
   body:has(#sms-page:target) .sidebar a[href="#sms-page"],
   body:has(#sms-page :target) .sidebar a[href="#sms-page"],
   body:has(#orders-page:target) .sidebar a[href="#orders-page"],
-  body:has(#orders-page :target) .sidebar a[href="#orders-page"] {
+  body:has(#orders-page :target) .sidebar a[href="#orders-page"],
+  body:has(#payments-page:target) .sidebar a[href="#payments-page"],
+  body:has(#payments-page :target) .sidebar a[href="#payments-page"] {
     background: white;
     color: var(--fg);
     font-weight: 600;
@@ -383,6 +385,7 @@ export const DOCS_HTML = `<!doctype html>
       <a class="primary" href="#categories-page">Categories</a>
       <a class="primary" href="#products-page">Products</a>
       <a class="primary" href="#orders-page">Orders</a>
+      <a class="primary" href="#payments-page">Payments</a>
       <a class="primary" href="#media-page">Media</a>
 
       <div class="nav-group">Auth · Guide</div>
@@ -447,6 +450,15 @@ export const DOCS_HTML = `<!doctype html>
       <a href="#orders-ofd">POST /orders/:id/out-for-delivery</a>
       <a href="#orders-deliver">POST /orders/:id/deliver</a>
       <a href="#orders-cancel">POST /orders/:id/cancel</a>
+
+      <div class="nav-group">Payments · Endpoints</div>
+      <a href="#payments-init">POST /payments/init</a>
+      <a href="#payments-verify">GET /payments/verify</a>
+      <a href="#payments-webhook">POST /payments/webhook/:provider</a>
+      <a href="#payments-refund">POST /payments/:id/refund</a>
+      <a href="#reconcile-list">GET /admin/reconciliations</a>
+      <a href="#reconcile-get">GET /admin/reconciliations/:id</a>
+      <a href="#reconcile-run">POST /admin/reconciliations/run</a>
 
       <div class="nav-group">Media · Endpoints</div>
       <a href="#media-upload">POST /media/images</a>
@@ -540,8 +552,8 @@ export const DOCS_HTML = `<!doctype html>
             <p>One order = one store. Status flow CONFIRMED → SHIPPED → OUT_FOR_DELIVERY → DELIVERED, plus CANCELLED. Item snapshots keep history stable. SMS triggers on placed / shipped / out-for-delivery.</p>
           </div>
           <div class="module">
-            <div class="top"><h4>Payments</h4><span class="status planned">Planned</span></div>
-            <p>Buyer charges, escrow, seller payouts, refunds.</p>
+            <div class="top"><h4>Payments</h4><span class="status shipped">Shipped</span></div>
+            <p>Hosted-redirect checkout via Paystack and Flutterwave. Card / MTN MoMo / Vodafone Cash / AirtelTigo Money / bank transfer / USSD. Webhooks + idempotent verify; orders flip from PENDING_PAYMENT to CONFIRMED on success.</p>
           </div>
           <div class="module">
             <div class="top"><h4>Moderation</h4><span class="status planned">Planned</span></div>
@@ -1707,7 +1719,7 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
           <li>Status flow: <code>CONFIRMED</code> → <code>SHIPPED</code> → <code>OUT_FOR_DELIVERY</code> → <code>DELIVERED</code>. <code>CANCELLED</code> is reachable only from <code>CONFIRMED</code>.</li>
           <li><strong>Stock is decremented atomically</strong> in the same Prisma <code>$transaction</code> that creates the order. The decrement is guarded by <code>WHERE stock &gt;= quantity</code>; if any item fails the check the entire transaction rolls back with a <code>409</code> citing the out-of-stock product. Concurrent orders for the last unit of a product can't both succeed.</li>
           <li><strong>Cancel restores stock</strong> for every item in the same transactional pattern. Only orders in <code>CONFIRMED</code> are cancellable.</li>
-          <li>Payment isn't modelled yet — orders default to <code>CONFIRMED</code>. A payments integration would add a <code>PENDING_PAYMENT</code> state before <code>CONFIRMED</code>.</li>
+          <li>Payment is handled by the <a href="#payments-page">Payments</a> module — orders start in <code>PENDING_PAYMENT</code> and flip to <code>CONFIRMED</code> only when a Paystack or Flutterwave payment succeeds.</li>
         </ul>
         <div class="callout">
           When a buyer creates an order, the store owner gets <strong>both SMS and email</strong> (<code>order-placed</code> / <code>order-placed-seller</code>). When the seller transitions to <code>SHIPPED</code> or <code>OUT_FOR_DELIVERY</code>, the buyer gets both too. SMS is gated on verified phone; email always sends.
@@ -1719,13 +1731,17 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
         <table>
           <thead><tr><th>Status</th><th>Meaning</th><th>Next transitions</th></tr></thead>
           <tbody>
-            <tr><td><code>CONFIRMED</code></td><td>Order placed, awaiting fulfilment</td><td><code>ship</code>, <code>cancel</code></td></tr>
+            <tr><td><code>PENDING_PAYMENT</code></td><td>Order created, stock reserved, waiting for the buyer to complete payment</td><td>→ <code>CONFIRMED</code> (via successful payment), <code>cancel</code></td></tr>
+            <tr><td><code>CONFIRMED</code></td><td>Payment confirmed; seller can fulfil</td><td><code>ship</code>, <code>cancel</code></td></tr>
             <tr><td><code>SHIPPED</code></td><td>Seller has dispatched</td><td><code>out-for-delivery</code></td></tr>
             <tr><td><code>OUT_FOR_DELIVERY</code></td><td>Courier has it; arriving today</td><td><code>deliver</code></td></tr>
             <tr><td><code>DELIVERED</code></td><td>Received by buyer</td><td>(terminal)</td></tr>
-            <tr><td><code>CANCELLED</code></td><td>Cancelled before shipment</td><td>(terminal)</td></tr>
+            <tr><td><code>CANCELLED</code></td><td>Cancelled before shipment (with stock restored)</td><td>(terminal)</td></tr>
           </tbody>
         </table>
+        <div class="callout">
+          New orders start in <code>PENDING_PAYMENT</code>. They flip to <code>CONFIRMED</code> only when <code>POST /payments/init</code> + a successful PSP callback land — see the Payments page. The <code>order-placed</code> SMS + email fire on that transition, not at order creation.
+        </div>
       </section>
 
       <h2>Endpoints</h2>
@@ -1849,6 +1865,323 @@ createListing(<span class="k">@CurrentUser</span>() user: AuthenticatedUser, <sp
 
       <div class="footer">
         Bikoba marketplace — Orders module.
+      </div>
+    </article>
+
+    <!-- ──────────── PAYMENTS PAGE ──────────── -->
+    <article class="page" id="payments-page">
+      <header class="hero">
+        <div class="eyebrow">Payments · API Reference</div>
+        <h1>Payments</h1>
+        <p>Hosted-redirect checkout via <strong>Paystack</strong> and <strong>Flutterwave</strong>. Both providers surface card / mobile money / bank-transfer / USSD channels, covering MTN MoMo, Vodafone Cash, and AirtelTigo Money for Ghana buyers.</p>
+      </header>
+
+      <section>
+        <h2>Flow</h2>
+        <ol>
+          <li>Buyer creates an order with <code>POST /orders</code>. It lands in <code>PENDING_PAYMENT</code> with stock already reserved.</li>
+          <li>Buyer calls <code>POST /payments/init</code> with the order id and chosen provider. The server creates a <code>Payment</code> row (status <code>PENDING</code>), asks the PSP for a hosted checkout URL, and returns it.</li>
+          <li>Buyer is redirected to the PSP. They choose a channel (card, MTN MoMo, Voda Cash, etc.) and pay.</li>
+          <li>PSP redirects them back to <code>${'$'}{PAYMENT_REDIRECT_URL}?reference=…&amp;provider=…</code>. The frontend at that URL calls <code>GET /payments/verify?reference=…</code> to re-sync state.</li>
+          <li>In parallel, the PSP fires a webhook to <code>POST /payments/webhook/:provider</code>. We verify the signature, then call the PSP's verify endpoint as the source of truth (webhooks can be replayed; the API can't be spoofed once you have the secret).</li>
+          <li>On <code>SUCCESS</code>: the <code>Payment</code> row is finalised, the <code>Order</code> transitions <code>PENDING_PAYMENT → CONFIRMED</code> with <code>paidAt = now</code>, and the seller gets an <code>order-placed</code> SMS + email. The verify endpoint and the webhook handler both feed through the same state machine — re-running for an already-<code>SUCCESS</code> payment is a no-op.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Configuration</h2>
+        <p>Each provider degrades independently. With a provider's secret blank, an init request targeting it returns <code>503</code>; the rest of the system works.</p>
+<pre><span class="c"># .env</span>
+<span class="k">PAYSTACK_SECRET_KEY</span>=<span class="s">sk_test_…</span>
+<span class="k">PAYSTACK_PUBLIC_KEY</span>=<span class="s">pk_test_…</span>       <span class="c"># informational; frontend SDK only</span>
+
+<span class="k">FLUTTERWAVE_SECRET_KEY</span>=<span class="s">FLWSECK_TEST-…</span>
+<span class="k">FLUTTERWAVE_PUBLIC_KEY</span>=<span class="s">FLWPUBK_TEST-…</span>   <span class="c"># informational</span>
+<span class="k">FLUTTERWAVE_WEBHOOK_SECRET</span>=<span class="s">…</span>       <span class="c"># "secret hash" set in the Flutterwave dashboard</span>
+
+<span class="k">PAYMENT_REDIRECT_URL</span>=<span class="s">https://app.bikoba.com/payments/result</span></pre>
+
+        <div class="callout">
+          Webhook URLs to register with each PSP: <code>https://api.bikoba.com/payments/webhook/PAYSTACK</code> and <code>.../payments/webhook/FLUTTERWAVE</code>. Both endpoints are <code>@Public()</code> — signature/hash verification gates them, not JWT.
+        </div>
+      </section>
+
+      <section>
+        <h2>Payment states</h2>
+        <table>
+          <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>PENDING</code></td><td>Init succeeded; awaiting buyer to complete checkout at PSP</td></tr>
+            <tr><td><code>SUCCESS</code></td><td>PSP confirmed; order has been advanced to <code>CONFIRMED</code></td></tr>
+            <tr><td><code>FAILED</code></td><td>PSP reported failure (declined, abandoned, cancelled, expired)</td></tr>
+            <tr><td><code>ABANDONED</code></td><td>Reserved for future cleanup sweep</td></tr>
+            <tr><td><code>REFUNDED</code></td><td>Reserved for the refunds flow (not built yet)</td></tr>
+          </tbody>
+        </table>
+        <p>One <code>Order</code> can have multiple <code>Payment</code> rows — failed attempts stay as audit history; the buyer can retry with the same provider or a different one. Only one row per order will ever be <code>SUCCESS</code>.</p>
+      </section>
+
+      <h2>Endpoints</h2>
+
+      <article class="endpoint" id="payments-init">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/payments/init</span>
+          <span class="auth-pill required">Verified email</span>
+        </header>
+        <p class="desc">Start a payment for an order. The caller must be the buyer (or ADMIN). Order must be in <code>PENDING_PAYMENT</code>. Returns the PSP's hosted-checkout URL.</p>
+        <h3>Request</h3>
+<pre>{
+  <span class="k">"orderId"</span>: <span class="s">"…"</span>,
+  <span class="k">"provider"</span>: <span class="s">"PAYSTACK"</span>    <span class="c">// PAYSTACK | FLUTTERWAVE</span>
+}</pre>
+        <h3>Response 201</h3>
+<pre>{
+  <span class="k">"payment"</span>: {
+    <span class="k">"id"</span>: <span class="s">"…"</span>,
+    <span class="k">"reference"</span>: <span class="s">"pay_abc123…"</span>,
+    <span class="k">"provider"</span>: <span class="s">"PAYSTACK"</span>,
+    <span class="k">"status"</span>: <span class="s">"PENDING"</span>,
+    <span class="k">"amount"</span>: <span class="s">"42.50"</span>,
+    <span class="k">"currency"</span>: <span class="s">"GHS"</span>,
+    …
+  },
+  <span class="k">"redirectUrl"</span>: <span class="s">"https://checkout.paystack.com/…"</span>
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> — validation failed</li>
+          <li><code>403</code> — caller is neither the buyer nor an ADMIN; or email not verified</li>
+          <li><code>404</code> — order not found</li>
+          <li><code>409</code> — order not in <code>PENDING_PAYMENT</code> state</li>
+          <li><code>503</code> — selected provider isn't configured on this server</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="payments-verify">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/payments/verify</span>
+          <span class="auth-pill">Public</span>
+        </header>
+        <p class="desc">
+          Re-sync a payment's status from the PSP using its reference. Called by the frontend after the PSP redirects the buyer back. Public because the post-PSP redirect doesn't carry your access token; the reference itself is an unguessable id, and verification just mirrors what the PSP already exposes publicly with the same reference.
+        </p>
+        <h3>Query</h3>
+<pre>?reference=pay_abc123…</pre>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"reference"</span>: <span class="s">"pay_abc123…"</span>,
+  <span class="k">"providerRef"</span>: <span class="s">"3712487123"</span>,
+  <span class="k">"status"</span>: <span class="s">"SUCCESS"</span>,
+  <span class="k">"channel"</span>: <span class="s">"MOBILE_MONEY"</span>,
+  <span class="k">"amount"</span>: <span class="s">"42.50"</span>,
+  <span class="k">"currency"</span>: <span class="s">"GHS"</span>,
+  <span class="k">"completedAt"</span>: <span class="s">"2026-05-15T18:42:00Z"</span>
+}</pre>
+        <p>Idempotent: re-verifying an already-<code>SUCCESS</code> payment returns immediately without calling the PSP again or re-firing notifications.</p>
+      </article>
+
+      <article class="endpoint" id="payments-webhook">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/payments/webhook/:provider</span>
+          <span class="auth-pill">Public (signed)</span>
+        </header>
+        <p class="desc">
+          Async confirmation from the PSP. Paystack signs with HMAC-SHA512 of the raw body using the secret key (header <code>x-paystack-signature</code>). Flutterwave compares <code>verif-hash</code> against <code>FLUTTERWAVE_WEBHOOK_SECRET</code>. Invalid signatures → <code>400</code>.
+        </p>
+        <p>The webhook payload is treated as a <em>trigger</em>, not as truth — we always re-verify against the PSP's API. This protects against replayed or spoofed payloads.</p>
+        <p>Returns <code>200 { "ok": true }</code> on success; the PSP stops retrying. Unknown references also return <code>200</code> (logged) so PSPs don't retry forever.</p>
+      </article>
+
+      <article class="endpoint" id="payments-refund">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/payments/:id/refund</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">
+          Issue a full refund on a previously-<code>SUCCESS</code> payment. Calls the PSP's refund API, then transitions the local <code>Payment</code> row to <code>REFUNDED</code>. If the linked order is still in <code>PENDING_PAYMENT</code> or <code>CONFIRMED</code>, it's cancelled in the same flow and stock is restored. Orders already in <code>SHIPPED</code>/<code>OUT_FOR_DELIVERY</code>/<code>DELIVERED</code> are left alone — refunding money while goods are out is an ops/dispute case, surfaced via warning log.
+        </p>
+        <h3>Request</h3>
+<pre>{ <span class="k">"reason"</span>: <span class="s">"Buyer chargeback initiated"</span> }   <span class="c">// optional</span></pre>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"status"</span>: <span class="s">"REFUNDED"</span>,
+  <span class="k">"refundedAt"</span>: <span class="s">"2026-05-15T22:00:00Z"</span>,
+  <span class="k">"refundReason"</span>: <span class="s">"Buyer chargeback initiated"</span>,
+  …
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> — caller is not ADMIN</li>
+          <li><code>404</code> — payment not found</li>
+          <li><code>409</code> — payment is not in <code>SUCCESS</code> state (already refunded, failed, or still pending)</li>
+          <li><code>503</code> — PSP refused the refund (provider-side failure); state is unchanged so it's safe to retry</li>
+        </ul>
+        <div class="callout">
+          Only full refunds for now. Partial refunds are doable on both providers but require an admin-decided amount and a richer Payment row; out of scope for v1.
+        </div>
+      </article>
+
+      <section>
+        <h2>Scheduled jobs</h2>
+        <p>Two daily jobs run automatically (scheduled by <code>PaymentsScheduler.onModuleInit</code> via BullMQ's idempotent <code>upsertJobScheduler</code>).</p>
+
+        <table>
+          <thead><tr><th>Job</th><th>Cron</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>reconcile-payments</code></td>
+              <td>04:00 UTC daily</td>
+              <td>Walks the last 24h of transactions on every configured PSP. Repairs payments whose local state has drifted (typically because a webhook never landed). Then scans for orders stuck in <code>PENDING_PAYMENT</code> even though their payment is <code>SUCCESS</code> and re-fires <code>markPaid</code>. Logs phantoms (PSP says paid, we have no row) and amount mismatches for human follow-up.</td>
+            </tr>
+            <tr>
+              <td><code>cancel-abandoned-orders</code></td>
+              <td>04:30 UTC daily</td>
+              <td>Finds orders sitting in <code>PENDING_PAYMENT</code> longer than <code>ABANDONED_CART_GRACE_HOURS</code> (default 24h), cancels them with reason <code>"Payment timed out"</code>, and restores reserved stock. Set the env var to 0 to disable.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          Reconciliation is the safety net for webhook delivery failures. Paystack retries dropped webhooks for ~72h; Flutterwave is similar. If your server is down longer than that, reconciliation is what catches the gap. At zero volume it does nothing; at scale it's what keeps support tickets from piling up.
+        </div>
+      </section>
+
+      <section>
+        <h2>Reconciliation audit log</h2>
+        <p>Every reconcile pass — scheduled or manual — writes a <code>ReconcileRun</code> row with summary counts and a per-drift-type <code>ReconcileEvent</code>. Browse history, drill into a specific run, or trigger one on demand via the admin endpoints below.</p>
+        <table>
+          <thead><tr><th><code>kind</code></th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr><td><code>PHANTOM</code></td><td>PSP charged a reference we have no Payment row for. Needs human investigation.</td></tr>
+            <tr><td><code>MISMATCH</code></td><td>PSP and our records disagree on amount or currency for the same reference. Needs investigation.</td></tr>
+            <tr><td><code>RECONCILED</code></td><td>Drift auto-repaired: PSP said SUCCESS, we promoted PENDING/FAILED → SUCCESS and re-fired downstream effects.</td></tr>
+            <tr><td><code>STUCK_RESOLVED</code></td><td>Payment was already SUCCESS but the Order was stuck in PENDING_PAYMENT; markPaid retried successfully.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <article class="endpoint" id="reconcile-list">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/admin/reconciliations</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Paginated list of reconcile runs, newest first.</p>
+        <h3>Query parameters</h3>
+        <table>
+          <thead><tr><th>Name</th><th>Default</th></tr></thead>
+          <tbody>
+            <tr><td><code>take</code></td><td>20 (clamped 1–100)</td></tr>
+            <tr><td><code>skip</code></td><td>0</td></tr>
+          </tbody>
+        </table>
+        <h3>Response 200</h3>
+<pre>[
+  {
+    <span class="k">"id"</span>: <span class="s">"…"</span>,
+    <span class="k">"startedAt"</span>: <span class="s">"2026-05-15T04:00:00Z"</span>,
+    <span class="k">"finishedAt"</span>: <span class="s">"2026-05-15T04:00:18Z"</span>,
+    <span class="k">"windowSince"</span>: <span class="s">"2026-05-14T04:00:00Z"</span>,
+    <span class="k">"windowUntil"</span>: <span class="s">"2026-05-15T04:00:00Z"</span>,
+    <span class="k">"scannedByProvider"</span>: { <span class="k">"PAYSTACK"</span>: <span class="n">42</span>, <span class="k">"FLUTTERWAVE"</span>: <span class="n">18</span> },
+    <span class="k">"reconciledCount"</span>: <span class="n">1</span>,
+    <span class="k">"stuckCount"</span>: <span class="n">0</span>,
+    <span class="k">"phantomsCount"</span>: <span class="n">0</span>,
+    <span class="k">"mismatchesCount"</span>: <span class="n">0</span>,
+    <span class="k">"durationMs"</span>: <span class="n">18234</span>
+  }
+]</pre>
+      </article>
+
+      <article class="endpoint" id="reconcile-get">
+        <header>
+          <span class="method get">GET</span>
+          <span class="path">/admin/reconciliations/:id</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Full run with its events, oldest event first. Use this to drill into phantoms or mismatches that need investigating.</p>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"id"</span>: <span class="s">"…"</span>,
+  <span class="k">"startedAt"</span>: <span class="s">"…"</span>,
+  …
+  <span class="k">"events"</span>: [
+    {
+      <span class="k">"id"</span>: <span class="s">"…"</span>,
+      <span class="k">"kind"</span>: <span class="s">"RECONCILED"</span>,
+      <span class="k">"provider"</span>: <span class="s">"PAYSTACK"</span>,
+      <span class="k">"reference"</span>: <span class="s">"pay_…"</span>,
+      <span class="k">"paymentId"</span>: <span class="s">"…"</span>,
+      <span class="k">"detail"</span>: { <span class="k">"from"</span>: <span class="s">"PENDING"</span>, <span class="k">"to"</span>: <span class="s">"SUCCESS"</span> }
+    }
+  ]
+}</pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> — caller isn't ADMIN</li>
+          <li><code>404</code> — no run with that id</li>
+        </ul>
+      </article>
+
+      <article class="endpoint" id="reconcile-run">
+        <header>
+          <span class="method post">POST</span>
+          <span class="path">/admin/reconciliations/run</span>
+          <span class="auth-pill required"><span class="role admin">ADMIN</span> only</span>
+        </header>
+        <p class="desc">Trigger a reconciliation pass on demand — useful after fixing a webhook misconfiguration or to verify a backfill. Window defaults to the last 24h; the cap is 30 days.</p>
+        <h3>Request</h3>
+<pre>{ <span class="k">"lookbackHours"</span>: <span class="n">72</span> }   <span class="c">// optional, default 24, max 720</span></pre>
+        <h3>Response 200</h3>
+<pre>{
+  <span class="k">"runId"</span>: <span class="s">"…"</span>,
+  <span class="k">"scannedByProvider"</span>: { <span class="k">"PAYSTACK"</span>: <span class="n">…</span> },
+  <span class="k">"reconciled"</span>: <span class="n">…</span>,
+  <span class="k">"stuck"</span>: <span class="n">…</span>,
+  <span class="k">"phantoms"</span>: [<span class="s">"…"</span>],
+  <span class="k">"mismatches"</span>: [<span class="s">"…"</span>]
+}</pre>
+      </article>
+
+      <section>
+        <h2>What sellers/buyers see</h2>
+        <p>Notifications fire automatically through the existing email + SMS infrastructure:</p>
+        <table>
+          <thead><tr><th>Event</th><th>Email</th><th>SMS</th></tr></thead>
+          <tbody>
+            <tr><td>Payment <code>SUCCESS</code> → order <code>CONFIRMED</code></td><td><code>order-placed-seller</code></td><td><code>order-placed</code> (if seller has verified phone)</td></tr>
+            <tr><td>Order <code>SHIPPED</code></td><td><code>order-shipped-buyer</code></td><td><code>order-shipped</code></td></tr>
+            <tr><td>Order <code>OUT_FOR_DELIVERY</code></td><td><code>order-out-for-delivery-buyer</code></td><td><code>order-out-for-delivery</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>End-to-end with curl</h2>
+<pre><span class="c"># 1. Buyer creates order — lands in PENDING_PAYMENT</span>
+curl -X POST .../orders -H "Authorization: Bearer $BUYER" \\
+  -d '{"storeId":"…","items":[...],"shippingAddress":"…"}'
+<span class="c"># → { id: "order_abc", status: "PENDING_PAYMENT", totalAmount: "42.50" }</span>
+
+<span class="c"># 2. Initiate payment</span>
+curl -X POST .../payments/init -H "Authorization: Bearer $BUYER" \\
+  -d '{"orderId":"order_abc","provider":"PAYSTACK"}'
+<span class="c"># → { payment: { reference: "pay_…", status: "PENDING" }, redirectUrl: "https://checkout.paystack.com/..." }</span>
+
+<span class="c"># 3. Buyer pays via the redirectUrl. PSP redirects to PAYMENT_REDIRECT_URL with ?reference=…</span>
+<span class="c"># 4. Frontend calls verify</span>
+curl .../payments/verify?reference=pay_…
+<span class="c"># → { status: "SUCCESS", completedAt: "…" } — order is now CONFIRMED, seller has been notified</span></pre>
+      </section>
+
+      <div class="footer">
+        Bikoba marketplace — Payments module.
       </div>
     </article>
 
